@@ -892,10 +892,6 @@
 		qcom,freq-step = <2>;
 	};
 
-<<<<<<< HEAD
-	gpio_keys {
-		compatible = "gpio-keys";
-=======
 	uart7: uart@f995d000 { /*BLSP #2, UART #7 */
 		compatible = "qcom,msm-hsuart-v14";
 		status = "disabled";
