@@ -91,14 +91,6 @@
 			reg = <0 0xC04000>;
 			label = "audio_mem";
 		};
-
-		peripheral_mem: peripheral_region@5d00000 {
-			linux,reserve-contiguous-region;
-			linux,reserve-region;
-			linux,remove-completely;
-			reg = <0x7b00000 0x8400000>;
-			label = "peripheral_mem";
-		};
 	};
 
 	soc: soc { };
@@ -892,73 +884,8 @@
 		qcom,freq-step = <2>;
 	};
 
-	uart7: uart@f995d000 { /*BLSP #2, UART #7 */
-		compatible = "qcom,msm-hsuart-v14";
-		status = "disabled";
-		reg = <0xf995d000 0x1000>,
-			<0xf9944000 0x19000>;
-		reg-names = "core_mem", "bam_mem";
-		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
-		#address-cells = <0>;
-		interrupt-parent = <&uart7>;
-		interrupts = <0 1 2>;
-		#interrupt-cells = <1>;
-		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 113 0
-				1 &intc 0 239 0
-				2 &msmgpio 42 0>;
-
-		qcom,bam-tx-ep-pipe-index = <0>;
-		qcom,bam-rx-ep-pipe-index = <1>;
-		qcom,msm-bus,name = "uart7";
-		qcom,msm-bus,num-cases = <2>;
-		qcom,msm-bus,num-paths = <1>;
-		qcom,msm-bus,vectors-KBps =
-				<84 512 0 0>,
-				<84 512 500 800>;
-	};
-
-	qcom,smem@fa00000 {
-		compatible = "qcom,smem";
-		reg = <0xfa00000 0x200000>,
-			<0xf9011000 0x1000>,
-			<0xfc428000 0x4000>;
-		reg-names = "smem", "irq-reg-base", "aux-mem1";
-
-		qcom,smd-modem {
-			compatible = "qcom,smd";
-			qcom,smd-edge = <0>;
-			qcom,smd-irq-offset = <0x8>;
-			qcom,smd-irq-bitmask = <0x1000>;
-			qcom,pil-string = "modem";
-			interrupts = <0 25 1>;
-		};
-
-		qcom,smsm-modem {
-			compatible = "qcom,smsm";
-			qcom,smsm-edge = <0>;
-			qcom,smsm-irq-offset = <0x8>;
-			qcom,smsm-irq-bitmask = <0x2000>;
-			interrupts = <0 26 1>;
-		};
-
-		qcom,smd-adsp {
-			compatible = "qcom,smd";
-			qcom,smd-edge = <1>;
-			qcom,smd-irq-offset = <0x8>;
-			qcom,smd-irq-bitmask = <0x100>;
-			qcom,pil-string = "adsp";
-			interrupts = <0 156 1>;
-		};
-
-		qcom,smsm-adsp {
-			compatible = "qcom,smsm";
-			qcom,smsm-edge = <1>;
-			qcom,smsm-irq-offset = <0x8>;
-			qcom,smsm-irq-bitmask = <0x200>;
-			interrupts = <0 157 1>;
-		};
->>>>>>> ec78124... ARM: dts: msm: Migrate 8x74 memory regions to CMA adapt to LG.
+	gpio_keys {
+		compatible = "gpio-keys";
 
 		camera_snapshot {
 			label = "camera_snapshot";
