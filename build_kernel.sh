@@ -57,11 +57,12 @@ BUILD_801=0
 BUILD_802=0
 BUILD_803=0
 BUILD_320=0
+BUILD_L_01F=0
 BUILD_LS_980=0
 BUILD_VS_980=0
 
 echo "What to cook for you?!";
-select CHOICE in D800 D801 D802 D803 F320 LS980 VS980; do
+select CHOICE in D800 D801 D802 D803 F320 L01F LS980 VS980; do
 	case "$CHOICE" in
 		"D800")
 			export KERNEL_CONFIG=dorimanx_d800_defconfig
@@ -87,6 +88,11 @@ select CHOICE in D800 D801 D802 D803 F320 LS980 VS980; do
 			export KERNEL_CONFIG=dorimanx_f320_defconfig
 			KERNEL_CONFIG_FILE=dorimanx_f320_defconfig
 			BUILD_320=1;
+			break;;
+                "L01F")
+			export KERNEL_CONFIG=dorimanx_l01f_defconfig
+			KERNEL_CONFIG_FILE=dorimanx_l01f_defconfig
+			BUILD_L_01F=1;
 			break;;
 		"LS980")
 			export KERNEL_CONFIG=dorimanx_ls980_defconfig
@@ -119,6 +125,8 @@ if [ ! -f "$KERNELDIR"/.config ]; then
 		cp arch/arm/configs/dorimanx_d803_defconfig .config
 	elif [ "$BUILD_320" -eq "1" ]; then
 		cp arch/arm/configs/dorimanx_f320_defconfig .config
+	elif [ "$BUILD_L_01F" -eq "1" ]; then
+		cp arch/arm/configs/dorimanx_l01f_defconfig .config
 	elif [ "$BUILD_LS_980" -eq "1" ]; then
 		cp arch/arm/configs/dorimanx_ls980_defconfig .config
 	elif [ "$BUILD_VS_980" -eq "1" ]; then
@@ -132,6 +140,7 @@ if [ -f "$KERNELDIR"/.config ]; then
 	BRANCH_802=$(grep -R "CONFIG_MACH_MSM8974_G2_OPEN_COM=y" .config | wc -l)
 	BRANCH_803=$(grep -R "CONFIG_MACH_MSM8974_G2_CA=y" .config | wc -l)
 	BRANCH_320=$(grep -R "CONFIG_MACH_MSM8974_G2_KR=y" .config | wc -l)
+	BRANCH_L_01F=$(grep -R "CONFIG_MACH_MSM8974_G2_DCM=y" .config | wc -l)
 	BRANCH_LS_980=$(grep -R "CONFIG_MACH_MSM8974_G2_SPR=y" .config | wc -l)
 	BRANCH_VS_980=$(grep -R "CONFIG_MACH_MSM8974_G2_VZW=y" .config | wc -l)
 	if [ "$BRANCH_800" -eq "0" ] && [ "$BUILD_800" -eq "1" ]; then
@@ -149,7 +158,10 @@ if [ -f "$KERNELDIR"/.config ]; then
 	if [ "$BRANCH_320" -eq "0" ] && [ "$BUILD_320" -eq "1" ]; then
 		cp arch/arm/configs/dorimanx_f320_defconfig ./.config
 	fi;
-	if [ "$BRANCH_LS_980" -eq "0" ] && [ "$BUILD_LS_980" -eq "1" ]; then
+	if [ "$BRANCH_L_01F" -eq "0" ] && [ "$BUILD_L_01F" -eq "1" ]; then
+		cp arch/arm/configs/dorimanx_l01f_defconfig ./.config
+	fi;
+        if [ "$BRANCH_LS_980" -eq "0" ] && [ "$BUILD_LS_980" -eq "1" ]; then
 		cp arch/arm/configs/dorimanx_ls980_defconfig ./.config
 	fi;
 	if [ "$BRANCH_VS_980" -eq "0" ] && [ "$BUILD_VS_980" -eq "1" ]; then
