@@ -241,6 +241,8 @@ elif [ "$BUILD_803" == "1" ]; then
 	cp -a ../LG-G2-D802-Ramdisk/D803-RAMDISK/* ../ramdisk-tmp/
 elif [ "$BUILD_320" == "1" ]; then
 	cp -a ../LG-G2-D802-Ramdisk/F320-RAMDISK/* ../ramdisk-tmp/
+elif [ "$BUILD_L_01F" == "1" ]; then
+	cp -a ../LG-G2-D802-Ramdisk/L01F-RAMDISK/* ../ramdisk-tmp/
 elif [ "$BUILD_LS_980" == "1" ]; then
 	cp -a ../LG-G2-D802-Ramdisk/LS980-RAMDISK/* ../ramdisk-tmp/
 elif [ "$BUILD_VS_980" == "1" ]; then
