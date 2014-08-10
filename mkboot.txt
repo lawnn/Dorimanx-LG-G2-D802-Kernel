@@ -1,6 +1,0 @@
-Documentation/dontdiff
-arch/mips/boot/.gitignore
-build_kernel.sh
-scripts/mkbootimg.sh
-scripts/mkbootimg
-scripts/mkbootfs
