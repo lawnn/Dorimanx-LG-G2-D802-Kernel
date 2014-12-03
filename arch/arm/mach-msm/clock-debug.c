@@ -442,8 +442,8 @@ void clock_debug_print_enabled(void)
 	unsigned long flags;
 	int i, cnt = 0;
 
-	if (likely(!debug_suspend))
-		return;
+	//if (likely(!debug_suspend))
+	//	return;
 
 	pr_info("Enabled clocks:\n");
 	spin_lock_irqsave(&clk_list_lock, flags);

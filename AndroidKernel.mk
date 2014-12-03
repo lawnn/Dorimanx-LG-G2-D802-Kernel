@@ -120,6 +120,9 @@ endif
 	$(clean-module-folder)
 	$(append-dtb)
 
+$(info ---------------)
+$(info KERNEL_CONFIG)
+
 $(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT) $(KERNEL_CONFIG)
 	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=arm CROSS_COMPILE=arm-eabi- headers_install
 
@@ -133,4 +136,4 @@ kernelconfig: $(KERNEL_OUT) $(KERNEL_CONFIG)
 	     $(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=arm CROSS_COMPILE=arm-eabi- savedefconfig
 	cp $(KERNEL_OUT)/defconfig kernel/arch/arm/configs/$(KERNEL_DEFCONFIG)
 
-endif
+endiROSS_COMPILE

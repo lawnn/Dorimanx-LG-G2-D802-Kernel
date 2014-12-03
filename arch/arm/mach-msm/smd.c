@@ -1373,6 +1373,7 @@ static void handle_smd_irq(struct list_head *list,
 	do_smd_probe();
 }
 
+extern int apps_wakeup;
 static inline void log_irq(uint32_t subsystem)
 {
 	const char *subsys = smd_edge_to_subsystem(subsystem);
@@ -1380,6 +1381,11 @@ static inline void log_irq(uint32_t subsystem)
 	(void) subsys;
 
 	SMx_POWER_INFO("SMD Int %s->Apps\n", subsys);
+
+	if (subsys && apps_wakeup) {
+		pr_info("SMD Int %s->Apps\n", subsys);
+		apps_wakeup = 0;
+	}
 }
 
 static irqreturn_t smd_modem_irq_handler(int irq, void *data)

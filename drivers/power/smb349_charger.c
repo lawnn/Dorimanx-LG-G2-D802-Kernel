@@ -615,7 +615,7 @@ static bool smb349_is_charger_present_rt(struct i2c_client *client)
 
 	if (!smb349_chg) {
 		pr_err("failed that smb349_chg is not yet initialized\n");
-		goto rt_error;
+		return false;
 	}
 
 	/* uses under voltage status bit to detect cable plug or unplug */

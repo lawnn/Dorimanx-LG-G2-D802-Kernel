@@ -62,7 +62,8 @@ extern char f54_wlog_buf[6000];
 int f54_window_crack_check_mode = 0;
 int f54_window_crack = 0;
 static int ts_suspend = 0;
-static bool blank_status = false;
+int thermal_status = 0;
+extern int touch_thermal_mode;
 #endif
 
 #if defined(Z_GLOVE_TOUCH_SUPPORT)
@@ -189,6 +190,88 @@ static int touch_disable_irq_wake(unsigned int irq){
 	return ret;
 }
 
+#ifdef CUST_G2_TOUCH
+void check_touch_xo_therm(int mode){
+	if(mode){
+		thermal_status = 1;
+		TOUCH_INFO_MSG("The Temperature is above 55 degree. Change touch FW !! \n");
+#if defined(A1_only)
+		queue_delayed_work(touch_wq, &touch_test_dev->work_thermal, msecs_to_jiffies(10));
+#endif
+	} else{
+		thermal_status = 0;
+		TOUCH_INFO_MSG("The Temperature is below 52 degree. Change touch FW !! \n");
+#if defined(A1_only)
+		queue_delayed_work(touch_wq, &touch_test_dev->work_thermal, msecs_to_jiffies(10));
+#endif
+	}
+}
+
+static void change_fw_func(struct work_struct *work_thermal) {
+	struct lge_touch_data *ts = container_of(to_delayed_work(work_thermal), struct lge_touch_data, work_thermal);
+	u8 min_peak[2] = {0};
+
+	if (ts->curr_pwr_state == POWER_OFF)
+		return;
+
+	if(thermal_status){
+		switch(ts->fw_info.fw_setting.curr_touch_vendor) {
+			case TOUCH_VENDOR_TPK:
+				min_peak[0] = 0x0d;
+				min_peak[1] = 0x50;
+
+				if(ts_charger_plug == 0){
+					if (touch_i2c_write(ts->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0){
+						TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+					} else
+						TOUCH_INFO_MSG("%s : TPK set min peak 80 \n", __func__);
+				}
+				break;
+			case TOUCH_VENDOR_LGIT:
+				min_peak[0] = 0x0c;
+				min_peak[1] = 0x28;
+
+				if(ts_charger_plug == 0){
+					if (touch_i2c_write(ts->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0){
+						TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+					} else
+						TOUCH_INFO_MSG("%s : LGIT set min peak 40 \n", __func__);
+				}
+				break;
+			default:
+				break;
+		}
+	} else {
+		switch(ts->fw_info.fw_setting.curr_touch_vendor) {
+			case TOUCH_VENDOR_TPK:
+				min_peak[0] = 0x0d;
+				min_peak[1] = 0x0f;
+
+				if(ts_charger_plug == 0){
+					if (touch_i2c_write(ts->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0){
+						TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+					} else
+						TOUCH_INFO_MSG("%s : TPK set min peak 15 \n", __func__);
+				}
+				break;
+			case TOUCH_VENDOR_LGIT:
+				min_peak[0] = 0x0c;
+				min_peak[1] = 0x0f;
+
+				if(ts_charger_plug == 0){
+					if (touch_i2c_write(ts->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0){
+						TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+					} else
+						TOUCH_INFO_MSG("%s : LGIT set min peak 15 \n", __func__);
+				}
+				break;
+			default:
+				break;
+		}
+	}
+}
+#endif
+
 static enum hrtimer_restart touch_trigger_timer_handler(struct hrtimer *timer)
 {
 	if (touch_test_dev && touch_test_dev->pdata->role->ghost_detection_enable) {
@@ -206,6 +289,7 @@ void trigger_baseline_state_machine(int plug_in, int type)
 {
 #if defined(A1_only)
 	u8 buf=0;
+	u8 min_peak[2] = {0};
 #endif
 
 	if (touch_test_dev && touch_test_dev->pdata->role->ghost_detection_enable) {
@@ -225,6 +309,33 @@ void trigger_baseline_state_machine(int plug_in, int type)
 							return;
 						}
 					}
+
+					switch(touch_test_dev->fw_info.fw_setting.curr_touch_vendor) {
+						case TOUCH_VENDOR_TPK:
+							min_peak[0] = 0x0d;
+							min_peak[1] = 0x0f;
+
+							if(thermal_status == 0){
+								if (touch_i2c_write(touch_test_dev->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0){
+									TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+								} else
+									TOUCH_INFO_MSG("%s : TPK set min peak 15 \n", __func__);
+							}
+							break;
+						case TOUCH_VENDOR_LGIT:
+							min_peak[0] = 0x0c;
+							min_peak[1] = 0x0f;
+
+							if(thermal_status == 0){
+								if (touch_i2c_write(touch_test_dev->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0) {
+									TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+								} else
+									TOUCH_INFO_MSG("%s : LGIT set min peak 15 \n", __func__);
+							}
+							break;
+						default:
+							break;
+					}
 #endif
 				} else if(plug_in ==1){
 #if defined(A1_only)
@@ -237,6 +348,33 @@ void trigger_baseline_state_machine(int plug_in, int type)
 							TOUCH_ERR_MSG("CHARGER_CONNECTED_REG write fail");
 							return;
 						}
+					}
+
+					switch(touch_test_dev->fw_info.fw_setting.curr_touch_vendor) {
+						case TOUCH_VENDOR_TPK:
+							min_peak[0] = 0x0d;
+							min_peak[1] = 0x50;
+
+							if(thermal_status == 0){
+								if (touch_i2c_write(touch_test_dev->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0) {
+									TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+								} else
+									TOUCH_INFO_MSG("%s : TPK set min peak 80 \n", __func__);
+							}
+							break;
+						case TOUCH_VENDOR_LGIT:
+							min_peak[0] = 0x0c;
+							min_peak[1] = 0x28;
+
+							if(thermal_status == 0){
+								if (touch_i2c_write(touch_test_dev->client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0) {
+									TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+								} else
+									TOUCH_INFO_MSG("%s : LGIT set min peak 40 \n", __func__);
+							}
+							break;
+						default:
+							break;
 					}
 #endif
 				}
@@ -1183,6 +1321,10 @@ static int touch_ic_init(struct lge_touch_data *ts)
 	int next_work = 0;
 	ts->int_pin_state = 0;
 
+#ifdef CUST_G2_TOUCH
+	touch_thermal_mode = 0;
+#endif
+
 	if(unlikely(ts->ic_init_err_cnt >= MAX_RETRY_COUNT)){
 		TOUCH_ERR_MSG("Init Failed: Irq-pin has some unknown problems\n");
 		goto err_out_critical;
@@ -1200,13 +1342,16 @@ static int touch_ic_init(struct lge_touch_data *ts)
 		TOUCH_ERR_MSG("specific device initialization fail\n");
 		goto err_out_retry;
 	}
-
-	if(touch_device_func->ic_ctrl) {
-		if(touch_device_func->ic_ctrl(ts->client, IC_CTRL_DOUBLE_TAP_WAKEUP_MODE, 0) < 0){
-			TOUCH_ERR_MSG("IC_CTRL_DOUBLE_TAP_WAKEUP_MODE handling fail\n");
-			goto err_out_retry;
+#ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
+	if(ts->fw_info.fw_setting.ic_chip_rev == TOUCH_CHIP_REV_B){
+		if(touch_device_func->ic_ctrl) {
+			if(touch_device_func->ic_ctrl(ts->client, IC_CTRL_DOUBLE_TAP_WAKEUP_MODE, 0) < 0){
+				TOUCH_ERR_MSG("IC_CTRL_DOUBLE_TAP_WAKEUP_MODE handling fail\n");
+				goto err_out_retry;
+			}
 		}
 	}
+#endif
 
 	/* Interrupt pin check after IC init - avoid Touch lockup */
 	if(ts->pdata->role->operation_mode == INTERRUPT_MODE){
@@ -2573,9 +2718,9 @@ if ((!strncmp(ts->fw_info.ic_fw_identifier, "PLG208", 6)) || (!strncmp(ts->fw_in
 		/* SSUNTEL G1F ic_chip_rev = 2, touch id = 1.8V */
 		TOUCH_INFO_MSG("ic_chip_rev = 2, touch id = 1.8V\n");
 
-		if( (int)simple_strtoul(&ts->fw_info.ic_fw_version[1], NULL, 10) >= 16) {
+		if( (int)simple_strtoul(&ts->fw_info.ic_fw_version[1], NULL, 10) > 13) {
 			TOUCH_INFO_MSG("Touch IC has wrong FW, SSUNTEL G1F FW-upgrade is executed\n");
-		} else if( (int)simple_strtoul(&ts->fw_info.syna_img_fw_version[1], NULL, 10) > 16) {
+		} else if( (int)simple_strtoul(&ts->fw_info.syna_img_fw_version[1], NULL, 10) > 13) {
 			TOUCH_INFO_MSG("Touch img is not for SSUNTEL G1F, FW-upgrade is not executed!\n");
 			goto out;
 		} else{
@@ -2829,13 +2974,6 @@ static irqreturn_t touch_thread_irq_handler(int irq, void *dev_id)
 
 #ifdef LGE_TOUCH_TIME_DEBUG
 	do_gettimeofday(&t_debug[TIME_THREAD_ISR_START]);
-#endif
-
-#if defined(A1_only)
-	if(touch_enable == 0){
-		TOUCH_INFO_MSG("%s : Interrupt Pin is disabled!!\n", __func__);
-		return IRQ_NONE;
-	}
 #endif
 
 #ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
@@ -3858,6 +3996,11 @@ static ssize_t store_touch_gesture(struct lge_touch_data *ts, const char *buf, s
 	int value;
 	sscanf(buf, "%d", &value);
 
+	if(ts->fw_info.fw_setting.ic_chip_rev == TOUCH_CHIP_REV_A){
+		touch_gesture_enable = 0;
+		return count;
+	}
+
 	if (value == touch_gesture_enable)
 		return count;
 
@@ -4587,6 +4730,7 @@ static int touch_probe(struct i2c_client *client, const struct i2c_device_id *id
 	INIT_WORK(&ts->work_fw_upgrade, touch_fw_upgrade_func);
 #ifdef CUST_G2_TOUCH
 	INIT_DELAYED_WORK(&ts->work_f54, touch_f54_func);
+	INIT_DELAYED_WORK(&ts->work_thermal, change_fw_func);
 #ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
 	INIT_DELAYED_WORK(&ts->work_gesture_wakeup, touch_gesture_wakeup_func);
 #endif
@@ -4698,6 +4842,13 @@ static int touch_probe(struct i2c_client *client, const struct i2c_device_id *id
 	touch_disable_irq(ts->client->irq);
 	release_all_ts_event(ts);
 	touch_ic_init(ts);
+
+#ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
+	if(ts->fw_info.fw_setting.ic_chip_rev == TOUCH_CHIP_REV_A){
+		touch_gesture_enable = 0;
+	}
+#endif
+
 	touch_enable_irq(ts->client->irq);
 	if(lge_get_boot_mode() == LGE_BOOT_MODE_CHARGERLOGO) {
 		TOUCH_INFO_MSG("lge_get_boot_mode() is LGE_BOOT_MODE_CHARGERLOGO\n");
@@ -4887,6 +5038,7 @@ static int touch_fb_suspend(struct device *device)
 #endif
 	cancel_work_sync(&ts->work);
 	cancel_delayed_work_sync(&ts->work_init);
+	cancel_delayed_work_sync(&ts->work_thermal);
 	if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
 		cancel_delayed_work_sync(&ts->work_touch_lock);
 
@@ -4933,19 +5085,24 @@ static int touch_fb_resume(struct device *device)
 
 #ifdef CUST_G2_TOUCH
 #ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
-	if (touch_disable_irq_wake(ts->client->irq) != 0){
-		TOUCH_INFO_MSG("disable_irq_wake failed\n");
-	}
-
+	if(ts->fw_info.fw_setting.ic_chip_rev == TOUCH_CHIP_REV_B){
+		if (touch_disable_irq_wake(ts->client->irq) != 0){
+			TOUCH_INFO_MSG("disable_irq_wake failed\n");
+		}
 		if (ts->fw_info.fw_upgrade.is_downloading == UNDER_DOWNLOADING){
-			TOUCH_INFO_MSG("Firmware is upgrading now. touch_resume is not executed !! \n");
+			TOUCH_INFO_MSG("Firmware is upgrading now. touch_resume is not executed !!\n");
 			return 0;
 		}
-
-	if (ts->curr_pwr_state != POWER_OFF)
-		touch_power_cntl(ts, ts->pdata->role->suspend_pwr);
-	touch_power_cntl(ts, ts->pdata->role->resume_pwr);
-	msleep(ts->pdata->role->booting_delay);
+		if (ts->curr_pwr_state != POWER_OFF)
+			touch_power_cntl(ts, ts->pdata->role->suspend_pwr);
+		touch_power_cntl(ts, ts->pdata->role->resume_pwr);
+		msleep(ts->pdata->role->booting_delay);
+	} else{
+		if(ts->curr_pwr_state) {
+			TOUCH_INFO_MSG("touch_resume is not executed curr_pwr_state\n");
+			return 0;
+		}
+	}
 #else
 	if(ts->curr_pwr_state) {
 		TOUCH_INFO_MSG("touch_resume is not executed curr_pwr_state\n");
@@ -4976,16 +5133,24 @@ static int touch_fb_resume(struct device *device)
 	touch_power_cntl(ts, ts->pdata->role->resume_pwr);
 #endif
 #ifdef CUST_G2_TOUCH
+#ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
+	if(ts->fw_info.fw_setting.ic_chip_rev == TOUCH_CHIP_REV_A){
+		touch_power_cntl(ts, ts->pdata->role->resume_pwr);
+	}
+#endif
+
 	if(ts->pdata->role->ghost_detection_enable) {
 		ts->gd_ctrl.is_resume = 1;
 	}
 #endif
 
 #ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
-	if(touch_device_func->ic_ctrl) {
-		if(touch_device_func->ic_ctrl(ts->client, IC_CTRL_DOUBLE_TAP_WAKEUP_MODE, 0) < 0){
-			TOUCH_ERR_MSG("IC_CTRL_DOUBLE_TAP_WAKEUP_MODE handling fail\n");
-			return 0;
+	if(ts->fw_info.fw_setting.ic_chip_rev == TOUCH_CHIP_REV_B) {
+		if(touch_device_func->ic_ctrl) {
+			if(touch_device_func->ic_ctrl(ts->client, IC_CTRL_DOUBLE_TAP_WAKEUP_MODE, 0) < 0){
+				TOUCH_ERR_MSG("IC_CTRL_DOUBLE_TAP_WAKEUP_MODE handling fail\n");
+				return 0;
+			}
 		}
 	}
 #endif
@@ -5015,11 +5180,6 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
 		blank = evdata->data;
 		if (*blank == FB_BLANK_UNBLANK) {
 #ifdef CUST_G2_TOUCH
-			if(blank_status == true) {
-				return 0;
-			}
-			blank_status = true;
-
 			if(f54_window_crack_check_mode)
 				mdelay(200);
 #endif
@@ -5030,7 +5190,6 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
 			touch_fb_resume(&ts->client->dev);
 			TOUCH_INFO_MSG("touch_resume\n");
 		} else if (*blank == FB_BLANK_POWERDOWN) {
-			blank_status = false;
 			touch_fb_suspend(&ts->client->dev);
 			TOUCH_INFO_MSG("touch_suspend\n");
 		}

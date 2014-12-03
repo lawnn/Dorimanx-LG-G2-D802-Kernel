@@ -42,6 +42,14 @@
 #ifdef CONFIG_MACH_LGE
 #define QCT_UNDERRUN_PATCH
 #endif
+#ifdef CONFIG_OLED_SUPPORT
+/* LGE_CHANGE
+ * This is for power on/off test patch from case#01266650
+ * Patch to prevent kernel crash occur at mdss_mdp_video_line_count
+ * 2013-08-09, isaac.park@lge.com
+ */
+#define QMC_POWERONOFF_PATCH
+#endif
 
 static atomic_t ov_active_panels = ATOMIC_INIT(0);
 static int mdss_mdp_overlay_free_fb_pipe(struct msm_fb_data_type *mfd);
@@ -800,8 +808,21 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 	int ret;
 
 	mutex_lock(&mdp5_data->ov_lock);
-	mutex_lock(&mfd->lock);
 
+#ifdef QMC_POWERONOFF_PATCH
+	if (!mdp5_data || !mdp5_data->ctl) {
+		pr_err("ctl not initialized\n");
+		mutex_unlock(&mdp5_data->ov_lock); 
+		return -ENODEV;
+	}
+
+	if (!mdp5_data->ctl->power_on) {
+		mutex_unlock(&mdp5_data->ov_lock); 
+		return 0;
+	}
+#endif
+
+	mutex_lock(&mfd->lock);
 	ret = mdss_mdp_display_wait4pingpong(mdp5_data->ctl);
 	if (ret) {
 		mutex_unlock(&mfd->lock);

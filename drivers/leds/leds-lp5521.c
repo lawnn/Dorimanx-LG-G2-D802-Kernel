@@ -192,7 +192,7 @@ static const struct lp5521_wait_param lp5521_wait_params[LP5521_CYCLE_MAX] = {
 	},
 };
 
-#if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_Z_KR)
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
 static struct lp5521_led_config lp5521_led_config_rev_a[] = {
 	{
 		.name = "R",
@@ -1606,7 +1606,7 @@ static int lp5521_probe(struct i2c_client *client,
 
 	mutex_init(&chip->lock);
 
-#if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_Z_KR)
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
     if(lge_get_board_revno() != HW_REV_B)
     {
         lp5521_pdata.led_config = lp5521_led_config_rev_a;
@@ -1621,7 +1621,7 @@ static int lp5521_probe(struct i2c_client *client,
         gpio_set_value((chip->rgb_led_en), 0);
         usleep_range(1000, 2000); /* Keep enable down at least 1ms */
 #ifdef CONFIG_MACH_MSM8974_Z_KR		
-        if(lge_get_board_revno() > HW_REV_D)
+        if(lge_get_board_revno() >= HW_REV_D)
         {
             gpio_set_value((chip->rgb_led_en), 1);
             usleep_range(1000, 2000); /* Keep enable down at least 1ms */
@@ -1702,9 +1702,11 @@ static int lp5521_probe(struct i2c_client *client,
 		goto fail2;
 	}
 
+#ifndef CONFIG_MACH_MSM8974_Z_KR
 	lp5521_run_led_pattern(1, chip); //1: Power On pattern number
 	LP5521_INFO_MSG("[%s] pattern id : 1(Power on)", __func__);
 	LP5521_INFO_MSG("[%s] complete\n", __func__);
+#endif
 
 	return ret;
 fail2:

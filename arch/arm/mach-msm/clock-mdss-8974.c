@@ -28,9 +28,9 @@
 
 #define REG_R(addr)			readl_relaxed(addr)
 #ifdef CONFIG_MACH_LGE
-/*           
-                                               
-                                  
+/* LGE_CHANGE
+* This is for auto pll patch from case#01156220
+* 2013-05-25, baryun.hwang@lge.com
 */
 #define QCT_AUTO_PLL_PATCH
 #endif

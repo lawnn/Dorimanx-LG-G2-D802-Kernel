@@ -602,7 +602,7 @@ static int mdss_fb_probe(struct platform_device *pdev)
 
 #if defined(CONFIG_MACH_LGE) && defined(CONFIG_FB_MSM_LOGO)
  #if defined(CONFIG_MACH_MSM8974_G2_DCM)
-	if ((lge_get_boot_mode()!=LGE_BOOT_MODE_MINIOS)&&(lge_get_boot_mode()!=LGE_BOOT_MODE_CHARGERLOGO))
+	if ((lge_get_boot_mode()!=LGE_BOOT_MODE_MINIOS))
  #else
 	if ((lge_get_boot_mode()!=LGE_BOOT_MODE_MINIOS)&&(lge_get_boot_mode()!=LGE_BOOT_MODE_CHARGERLOGO)&&!lge_get_cont_splash_enabled())
 #endif
@@ -982,7 +982,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 #endif
 
 #if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_OLED_SUPPORT)
-			   flush_work_sync(&mfd->commit_work);
+			   cancel_work_sync(&mfd->commit_work);
 #endif
 			ret = mfd->mdp.off_fnc(mfd);
 			if (ret)

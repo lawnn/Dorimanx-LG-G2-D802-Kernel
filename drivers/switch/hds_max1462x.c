@@ -275,7 +275,7 @@ static void button_released(struct work_struct *work)
 	int table_size = ARRAY_SIZE(max1462x_ear_3button_type_data);
 	int i;
 
-       //
+       // [AUDIO_BSP] 20130201, junday.lee, fix fake button_released return condition
        if (hi->gpio_get_value_func(hi->gpio_detect) && !atomic_read(&hi->btn_state)){
 		HSD_ERR("button_released but ear jack is plugged out already! just ignore the event.\n");
 		return;

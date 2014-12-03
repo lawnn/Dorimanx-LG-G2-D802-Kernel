@@ -478,9 +478,9 @@ static struct pil_reset_ops pil_mba_ops = {
 
 #define subsys_to_drv(d) container_of(d, struct mba_data, subsys_desc)
 
-//                                      
+// [START] jin.park@lge.com, SSR FEATURE
 char ssr_noti[MAX_SSR_REASON_LEN];
-//                                    
+// [END] jin.park@lge.com, SSR FEATURE
 
 static void log_modem_sfr(void)
 {
@@ -500,9 +500,9 @@ static void log_modem_sfr(void)
 	strlcpy(reason, smem_reason, min(size, sizeof(reason)));
 	pr_err("modem subsystem failure reason: %s.\n", reason);
 
-//                                      
+// [START] jin.park@lge.com, SSR FEATURE
 	strlcpy(ssr_noti, smem_reason, min(size, sizeof(ssr_noti)));
-//                                    
+// [END] jin.park@lge.com, SSR FEATURE
 
 	smem_reason[0] = '\0';
 	wmb();

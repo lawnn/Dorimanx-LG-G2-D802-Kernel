@@ -111,13 +111,13 @@
 #define FLASH_TMR_SAFETY		0x00
 #define FLASH_FAULT_DETECT_MASK		0X80
 
-/*                                                                                          */
+/* LGE_CHANGE_S, Workaround code to set flash current as 1.2A, 2013-05-09, jinw.kim@lge.com */
 #if 0 // QCT request
 #define FLASH_HW_VREG_OK		0x80
 #else
 #define FLASH_HW_VREG_OK		0x40
 #endif
-/*                                                                                          */
+/* LGE_CHANGE_E, Workaround code to set flash current as 1.2A, 2013-05-09, jinw.kim@lge.com */
 
 #define FLASH_VREG_MASK			0xC0
 #define FLASH_STARTUP_DLY_MASK		0x02
@@ -1096,7 +1096,7 @@ static int qpnp_mpp_set(struct qpnp_led_data *led)
 	return 0;
 }
 
-/*                                                                                          */
+/* LGE_CHANGE_S, Re-define the function to use workaround code 2013-06-27, jinw.kim@lge.com */
 #if defined(CONFIG_MACH_MSM8974_G2_KDDI) || defined(CONFIG_MACH_MSM8974_VU3_LGU)	//QMC original
 static int qpnp_flash_regulator_operate(struct qpnp_led_data *led, bool on)
 {
@@ -1159,6 +1159,8 @@ static int qpnp_flash_regulator_operate(struct qpnp_led_data *led, bool on)
 {
 	u8 buf = 0;
 	int rc = 0;
+	static bool is_phy_vbus_write = false;
+
 	if(!led)
 		return -EINVAL;
 
@@ -1176,51 +1178,62 @@ static int qpnp_flash_regulator_operate(struct qpnp_led_data *led, bool on)
 		return rc;
 	}
 
+	rc = spmi_ext_register_readl(led->spmi_dev->ctrl, 0,
+			0x13EA, &buf, 1);
+	if (rc)
+		pr_err("SPMI read failed base:0x13EA rc=%d\n", rc);
+
+	if (buf != 0x2F) {
+		is_phy_vbus_write = true;
 // SMBB_USB_SEC_ACCESS
-	buf = 0xA5;
-	rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
-		0x13D0, &buf, 1);
-	if (rc) {
-		dev_err(&led->spmi_dev->dev,
-			"SMBB_USB_SEC_ACCESS reg write failed(%d)\n",
-			rc);
-		return rc;
-	}
+		buf = 0xA5;
+		rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
+			0x13D0, &buf, 1);
+		if (rc) {
+			dev_err(&led->spmi_dev->dev,
+				"SMBB_USB_SEC_ACCESS reg write failed(%d)\n",
+				rc);
+			return rc;
+		}
 
 // SMBB_USB_COMP_OVR1: overrides USBIN_ULIMIT_OK and USBIN_LLIMIT_OK to 1 and CHG_GONE comparator to 0.
-	buf = 0x2F;
-	rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
-		0x13EA, &buf, 1);
-	if (rc) {
-		dev_err(&led->spmi_dev->dev,
-			"SMBB_USB_COMP_OVR1 reg write failed(%d)\n",
-			rc);
-		return rc;
+		buf = 0x2F;
+		rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
+			0x13EA, &buf, 1);
+		if (rc) {
+			dev_err(&led->spmi_dev->dev,
+				"SMBB_USB_COMP_OVR1 reg write failed(%d)\n",
+				rc);
+			return rc;
+		}
 	}
 
 	return rc;
 
 regulator_turn_off:
+	if (is_phy_vbus_write) {
+		is_phy_vbus_write = false;
 // SMBB_USB_SEC_ACCESS
-	buf = 0xA5;
-	rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
-		0x13D0, &buf, 1);
-	if (rc) {
-		dev_err(&led->spmi_dev->dev,
-			"SMBB_USB_SEC_ACCESS reg write failed(%d)\n",
-			rc);
-		return rc;
-	}
+		buf = 0xA5;
+		rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
+			0x13D0, &buf, 1);
+		if (rc) {
+			dev_err(&led->spmi_dev->dev,
+				"SMBB_USB_SEC_ACCESS reg write failed(%d)\n",
+				rc);
+			return rc;
+		}
 
 // SMBB_USB_COMP_OVR1: overrides USBIN_ULIMIT_OK and USBIN_LLIMIT_OK to 1 and CHG_GONE comparator to 0.
-	buf = 0x00;
-	rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
-		0x13EA, &buf, 1);
-	if (rc) {
-		dev_err(&led->spmi_dev->dev,
-			"SMBB_USB_COMP_OVR1 reg write failed(%d)\n",
-			rc);
-		return rc;
+		buf = 0x00;
+		rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
+			0x13EA, &buf, 1);
+		if (rc) {
+			dev_err(&led->spmi_dev->dev,
+				"SMBB_USB_COMP_OVR1 reg write failed(%d)\n",
+				rc);
+			return rc;
+		}
 	}
 
 // SMBB_USB_SUSP: USB Suspend
@@ -1237,7 +1250,7 @@ regulator_turn_off:
 	return rc;
 }
 #endif
-/*                                                                                          */
+/* LGE_CHANGE_E, Re-define the function to use workaround code 2013-06-27, jinw.kim@lge.com */
 
 static int qpnp_torch_regulator_operate(struct qpnp_led_data *led, bool on)
 {
@@ -1282,12 +1295,12 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 		led->flash_cfg->current_prgm =
 			(val * FLASH_MAX_LEVEL / led->max_current);
 
-/*                                                                                          */
+/* LGE_CHANGE_S, Workaround code to set flash current as 1.2A, 2013-05-09, jinw.kim@lge.com */
 #if 0
 	led->flash_cfg->current_prgm =
 		led->flash_cfg->current_prgm >> FLASH_CURRENT_PRGM_SHIFT;
 #endif
-/*                                                                                          */
+/* LGE_CHANGE_E, Workaround code to set flash current as 1.2A, 2013-05-09, jinw.kim@lge.com */
 
 	if (!led->flash_cfg->current_prgm)
 		led->flash_cfg->current_prgm = FLASH_CURRENT_PRGM_MIN;
@@ -1320,8 +1333,11 @@ static int qpnp_flash_set(struct qpnp_led_data *led)
 					"Torch reg write failed(%d)\n", rc);
 				return rc;
 			}
+
+			/* LGE_CHANGE_S, To set lowest flash current for DCM, 2013-07-08, jinw.kim@lge.com */
 			if(val == 1)
 				led->flash_cfg->current_prgm = 0;
+			/* LGE_CHANGE_E, To set lowest flash current for DCM, 2013-07-08, jinw.kim@lge.com */
 
 			rc = qpnp_led_masked_write(led,
 				led->flash_cfg->current_addr,
@@ -2051,7 +2067,7 @@ static int __devinit qpnp_flash_init(struct qpnp_led_data *led)
 		return rc;
 	}
 
-/*                                                                                         */
+/* LGE_CHANGE_S, Set threshold for flash when battery is low, 2013-06-28, jinw.kim@lge.com */
 	/* Set FLASH_VPH_PWR_DROOP
 	 * 7  	: 	0 = do not us this feature, 1 = enable this feature
 	 * 6:4	:	000 = 2.5V       011 = 2.8V           110 = 3.1V
@@ -2065,7 +2081,7 @@ static int __devinit qpnp_flash_init(struct qpnp_led_data *led)
 			"FLASH_VPH_PWR_DROOP reg write failed(%d)\n", rc);
 		return rc;
 	}
-/*                                                                                         */
+/* LGE_CHANGE_E, Set threshold for flash when battery is low, 2013-06-28, jinw.kim@lge.com */
 
 	led->flash_cfg->strobe_type = 0;
 
@@ -3271,6 +3287,9 @@ void make_onoff_led_pattern(int rgb)
 /* below function is for aat... */
 void rgb_luts_set(struct qpnp_led_data *led)
 {
+	printk("[RGB LED] brightness R:%d G:%d B:%d\n", red_led->cdev.brightness,
+		green_led->cdev.brightness, blue_led->cdev.brightness);
+
 	if (led->id == 3 && led->cdev.brightness>0)
 		make_onoff_led_pattern(0xFF0000);
 	else if (led->id == 4 && led->cdev.brightness>0)
@@ -3287,12 +3306,12 @@ void set_kpdbl_pattern(int pattern)
 			14, 17, 18, 21, 23, 25, 27, 29, 31, 34,
 			36, 38, 40, 42, 44, 46, 48, 51, 53, 55,
 			57, 59, 61, 64, 66, 68, 70, 71, 71, 71};
-			
+
 	int duty_pcts_kpdbl_36[30] = {
 			0, 170, 165, 158, 150, 138, 124, 109, 92, 73,
-			53, 32, 10, 0, 0, 0, 170, 165, 158, 150, 
-			138, 124, 109, 92, 73, 53, 32, 10, 0, 0,};	
-			
+			53, 32, 10, 0, 0, 0, 170, 165, 158, 150,
+			138, 124, 109, 92, 73, 53, 32, 10, 0, 0,};
+
 	struct lut_params kpdbl_lut_params;
 
 	if (pattern > 1000)

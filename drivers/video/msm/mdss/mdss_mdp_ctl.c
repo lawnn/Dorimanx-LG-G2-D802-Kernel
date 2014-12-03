@@ -23,7 +23,14 @@
 /* truncate at 1k */
 #define MDSS_MDP_BUS_FACTOR_SHIFT 10
 /* 1.5 bus fudge factor */
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
+#define MDSS_MDP_BUS_FUDGE_FACTOR_IB(val) (((val) / 2) * 3)
+#define MDSS_MDP_BUS_FUDGE_FACTOR_HIGH_IB(val) (val << 1)
+#define MDSS_MDP_BUS_FUDGE_FACTOR_AB(val) (val << 1)
+#define MDSS_MDP_BUS_FLOOR_BW (3200000000ULL >> MDSS_MDP_BUS_FACTOR_SHIFT)
+#else
 #define MDSS_MDP_BUS_FUDGE_FACTOR(val) (((val) / 2) * 3)
+#endif
 /* 1.25 clock fudge factor */
 #define MDSS_MDP_CLK_FUDGE_FACTOR(val) (((val) * 5) / 4)
 
@@ -47,6 +54,12 @@ enum {
  * 2013-07-22, minkyeong.kim@lge.com
  */
 #define QMC_SLIMPORT_UNDERRUN_PATCH
+/* LGE_CHANGE
+ * This is for power on/off test patch from case#01266650
+ * Patch to prevent kernel crash occur at mdss_mdp_video_line_count
+ * 2013-08-09, isaac.park@lge.com
+ */
+#define QMC_POWERONOFF_PATCH
 #endif
 
 static DEFINE_MUTEX(mdss_mdp_ctl_lock);
@@ -68,6 +81,75 @@ static inline u32 mdss_mdp_get_pclk_rate(struct mdss_mdp_ctl *ctl)
 		pinfo->clk_rate;
 }
 
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
+static u32 __mdss_mdp_ctrl_perf_ovrd_helper(struct mdss_mdp_mixer *mixer,
+		u32 *npipe)
+{
+	struct mdss_panel_info *pinfo;
+	struct mdss_mdp_pipe *pipe;
+	u32 mnum, ovrd = 0;
+
+	if (!mixer || !mixer->ctl->panel_data)
+		return 0;
+
+	pinfo = &mixer->ctl->panel_data->panel_info;
+	for (mnum = 0; mnum < MDSS_MDP_MAX_STAGE; mnum++) {
+		pipe = mixer->stage_pipe[mnum];
+		if (pipe && pinfo) {
+			*npipe = *npipe + 1;
+			if ((pipe->src.w >= pipe->src.h) &&
+					(pipe->src.w >= pinfo->xres))
+				ovrd = 1;
+		}
+	}
+
+	return ovrd;
+}
+
+/**
+ * mdss_mdp_ctrl_perf_ovrd() - Determines if performance override is needed
+ * @mdata:	Struct containing references to all MDP5 hardware structures
+ *		and status info such as interupts, target caps etc.
+ * @ab_quota:	Arbitrated bandwidth quota
+ * @ib_quota:	Instantaneous bandwidth quota
+ *
+ * Function calculates the minimum required MDP and BIMC clocks to avoid MDP
+ * underflow during portrait video playback. The calculations are based on the
+ * way MDP fetches (bandwidth requirement) and processes data through
+ * MDP pipeline (MDP clock requirement) based on frame size and scaling
+ * requirements.
+ */
+static void __mdss_mdp_ctrl_perf_ovrd(struct mdss_data_type *mdata,
+	u64 *ab_quota, u64 *ib_quota)
+{
+	struct mdss_mdp_ctl *ctl;
+	u32 i, npipe = 0, ovrd = 0;
+
+	for (i = 0; i < mdata->nctl; i++) {
+		ctl = mdata->ctl_off + i;
+		if (!ctl->power_on)
+			continue;
+		ovrd |= __mdss_mdp_ctrl_perf_ovrd_helper(
+				ctl->mixer_left, &npipe);
+		ovrd |= __mdss_mdp_ctrl_perf_ovrd_helper(
+				ctl->mixer_right, &npipe);
+	}
+
+	*ab_quota = MDSS_MDP_BUS_FUDGE_FACTOR_AB(*ab_quota);
+	if (npipe > 1)
+		*ib_quota = MDSS_MDP_BUS_FUDGE_FACTOR_HIGH_IB(*ib_quota);
+	else
+		*ib_quota = MDSS_MDP_BUS_FUDGE_FACTOR_IB(*ib_quota);
+
+	if (ovrd && (*ib_quota < MDSS_MDP_BUS_FLOOR_BW)) {
+		*ib_quota = MDSS_MDP_BUS_FLOOR_BW;
+		pr_debug("forcing the BIMC clock to 200 MHz : %llu bytes",
+			*ib_quota);
+	} else {
+		pr_debug("ib quota : %llu bytes", *ib_quota);
+	}
+}
+#endif
 static int mdss_mdp_ctl_perf_commit(struct mdss_data_type *mdata, u32 flags)
 {
 	struct mdss_mdp_ctl *ctl;
@@ -92,15 +174,21 @@ static int mdss_mdp_ctl_perf_commit(struct mdss_data_type *mdata, u32 flags)
 		}
 	}
 	if (flags & MDSS_MDP_PERF_UPDATE_BUS) {
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
+		bus_ab_quota = bus_ib_quota;
+		__mdss_mdp_ctrl_perf_ovrd(mdata, &bus_ab_quota, &bus_ib_quota);
+		bus_ib_quota <<= MDSS_MDP_BUS_FACTOR_SHIFT;
+		bus_ab_quota <<= MDSS_MDP_BUS_FACTOR_SHIFT;
+#else
 		bus_ab_quota = bus_ib_quota << MDSS_MDP_BUS_FACTOR_SHIFT;
 		bus_ib_quota = MDSS_MDP_BUS_FUDGE_FACTOR(bus_ib_quota);
 		bus_ib_quota <<= MDSS_MDP_BUS_FACTOR_SHIFT;
-
+#endif
 		mdss_mdp_bus_scale_set_quota(bus_ab_quota, bus_ib_quota);
 	}
 	if (flags & MDSS_MDP_PERF_UPDATE_CLK) {
 		clk_rate = MDSS_MDP_CLK_FUDGE_FACTOR(clk_rate);
-		pr_debug("update clk rate = %lu\n", clk_rate);
+		pr_debug("update clk rate = %lu HZ\n", clk_rate);
 		mdss_mdp_set_clk_rate(clk_rate);
 	}
 	mutex_unlock(&mdss_mdp_ctl_lock);
@@ -159,12 +247,6 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 	rate *= v_total * fps;
 	if (mixer->rotator_mode) {
 		rate /= 4; /* block mode fetch at 4 pix/clk */
-
-		#if defined(CONFIG_MACH_MSM8974_VU3_KR) //Temporary WA for VU3 MDP Underrun
-		if(((src_h ==480)||(src_h ==360))&&((pipe->src.w ==640)||(pipe->src.w ==480)||(pipe->src.w ==720)))
-			quota *=8;
-		else
-		#endif
 		quota *= 2; /* bus read + write */
 		perf->ib_quota = quota;
 	} else {
@@ -1160,6 +1242,14 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl)
 		return 0;
 	}
 
+#ifdef QMC_POWERONOFF_PATCH 
+{ 
+	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(ctl->mfd); 
+	if (mdp5_data) 
+		mutex_lock(&mdp5_data->ov_lock); 
+} 
+#endif 
+
 	sctl = mdss_mdp_get_split_ctl(ctl);
 
 	pr_info("ctl_num=%d\n", ctl->num);
@@ -1207,6 +1297,14 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl)
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 
 	mutex_unlock(&ctl->lock);
+
+#ifdef QMC_POWERONOFF_PATCH 
+{ 
+	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(ctl->mfd); 
+	if (mdp5_data) 
+		mutex_unlock(&mdp5_data->ov_lock); 
+} 
+#endif
 
 	return ret;
 }
@@ -1608,7 +1706,7 @@ int mdss_mdp_display_wait4comp(struct mdss_mdp_ctl *ctl)
 
 	if (ctl->perf_changed) {
 #ifdef QMC_SLIMPORT_UNDERRUN_PATCH
-		if ((ctl->intf_type == MDSS_INTF_HDMI) && ((ctl->bus_ab_quota==0) || (ctl->bus_ib_quota==0))); 
+		if ((ctl->intf_type == MDSS_INTF_HDMI) && ((ctl->bus_ab_quota==0) || (ctl->bus_ib_quota==0)));
 		else
 #endif
 			mdss_mdp_ctl_perf_commit(ctl->mdata, ctl->perf_changed);

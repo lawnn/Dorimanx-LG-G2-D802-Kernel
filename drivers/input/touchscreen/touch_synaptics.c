@@ -922,10 +922,7 @@ int set_fw_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 			break;
 		case TOUCH_CHIP_REV_B:
 			fw_info->fw_setting.customer_family = get_ic_customer_family(ts, fw_info);
-#ifdef CONFIG_MACH_MSM8974_Z_KDDI
-			if (lge_get_board_revno() >= HW_REV_B)
-				fw_info->fw_setting.customer_family = 1;
-#endif
+
 			switch(fw_info->fw_setting.customer_family)
 			{
 				case CUSTOMER_FAMILY_BAR_PATTERN:
@@ -1094,12 +1091,19 @@ int get_ic_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 	return 0;
 }
 
+#if defined(A1_only)
+extern int thermal_status;
+#endif
+
 int synaptics_ts_init(struct i2c_client* client, struct touch_fw_info* fw_info)
 {
 	struct synaptics_ts_data *ts =
 			(struct synaptics_ts_data *)get_touch_handle(client);
 
 	u8 buf = 0;
+#if defined(A1_only)
+	u8 min_peak[2] = {0};
+#endif
 
 	if (touch_debug_mask & DEBUG_TRACE)
 		TOUCH_DEBUG_MSG("\n");
@@ -1122,6 +1126,35 @@ int synaptics_ts_init(struct i2c_client* client, struct touch_fw_info* fw_info)
 				TOUCH_ERR_MSG("DEVICE_CONTROL_REG write fail\n");
 				return -EIO;
 			}
+#if defined(A1_only)
+			switch(fw_info->fw_setting.curr_touch_vendor) {
+				case TOUCH_VENDOR_TPK:
+					min_peak[0] = 0x0d;
+					min_peak[1] = 0x50;
+
+					if(thermal_status == 0){
+						if (touch_i2c_write(client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0){
+							TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+						} else
+							TOUCH_INFO_MSG("%s : TPK set min peak 80 \n", __func__);
+					}
+					break;
+				case TOUCH_VENDOR_LGIT:
+					min_peak[0] = 0x0c;
+					min_peak[1] = 0x28;
+
+					if(thermal_status == 0){
+						if (touch_i2c_write(client, MINIMUM_PEAK_AMPLITUDE_REG, sizeof(min_peak), min_peak) < 0){
+							TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+						} else
+							TOUCH_INFO_MSG("%s : LGIT set min peak 40 \n", __func__);
+					}
+					break;
+				default:
+					break;
+			}
+#endif
+
 		}
 	} else {
 		if (unlikely(touch_i2c_write_byte(client, DEVICE_CONTROL_REG,

@@ -848,7 +848,11 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 			if (src_h <= pipe->dst.h)
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_BIL << 10) |
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
+					(MDSS_MDP_SCALE_FILTER_BIL << 18);
+#else
 					(MDSS_MDP_SCALE_FILTER_NEAREST << 18);
+#endif
 			else
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 10) |
@@ -901,7 +905,11 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 			if (src_w <= pipe->dst.w)
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_BIL << 8) |
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
+					(MDSS_MDP_SCALE_FILTER_BIL << 16);
+#else
 					(MDSS_MDP_SCALE_FILTER_NEAREST << 16);
+#endif
 			else
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 8) |

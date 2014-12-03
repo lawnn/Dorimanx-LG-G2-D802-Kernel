@@ -49,6 +49,7 @@
 #ifdef CUST_G2_TOUCH
 #include <mach/board_lge.h>
 lcd_maker_id get_panel_maker_id(void);
+#define MINIMUM_PEAK_AMPLITUDE_REG    0x15
 #endif
 
 struct touch_device_caps
@@ -321,6 +322,7 @@ struct lge_touch_data
 #ifdef CUST_G2_TOUCH
 	struct delayed_work			work_f54;
 	struct delayed_work			work_gesture_wakeup;
+	struct delayed_work			work_thermal;
 #endif
 #if defined(CONFIG_FB)
 	struct notifier_block fb_notif;

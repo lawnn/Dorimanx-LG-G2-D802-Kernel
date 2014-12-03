@@ -1029,6 +1029,7 @@ void msm_pm_enable_retention(bool enable)
 }
 EXPORT_SYMBOL(msm_pm_enable_retention);
 
+int apps_wakeup = 0;
 static int msm_pm_enter(suspend_state_t state)
 {
 	bool allow[MSM_PM_SLEEP_MODE_NR];
@@ -1123,6 +1124,7 @@ enter_exit:
 	if (MSM_PM_DEBUG_SUSPEND & msm_pm_debug_mask)
 		pr_info("%s: return\n", __func__);
 
+	apps_wakeup = 1;
 	return 0;
 }
 

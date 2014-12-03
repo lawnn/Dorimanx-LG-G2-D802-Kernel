@@ -293,9 +293,9 @@ static int msm_csid_init(struct csid_device *csid_dev, uint32_t *csid_version)
 	csid_dev->csid_state = CSID_POWER_UP;
 	pr_err(" %s:%d CSID_POWER_UP %d \n",__func__,__LINE__,csid_dev->csid_state);
 
-/*                                                                                                                     */
+/* LGE_CHANGE_S [youngbae.choi@lge.com][20130625] : To enter the deep sleep after finish camera open , for google talk */
 	wake_lock_timeout(&csid_dev->csid_wake_lock, 2*HZ);	
-/*                                                                                                                     */
+/* LGE_CHANGE_E [youngbae.choi@lge.com][20130625] : To enter the deep sleep after finish camera open , for google talk */
 	return rc;
 
 clk_enable_failed:
@@ -328,9 +328,9 @@ static int msm_csid_release(struct csid_device *csid_dev)
 {
 	uint32_t irq;
 
-/*                                                                                                                     */
+/* LGE_CHANGE_S [youngbae.choi@lge.com][20130625] : To enter the deep sleep after finish camera open , for google talk */
 	wake_unlock(&csid_dev->csid_wake_lock);	
-/*                                                                                                                     */
+/* LGE_CHANGE_E [youngbae.choi@lge.com][20130625] : To enter the deep sleep after finish camera open , for google talk */
 
 	if (csid_dev->csid_state != CSID_POWER_UP) {
 		pr_err("%s: csid invalid state %d\n", __func__,
@@ -586,9 +586,9 @@ static int __devinit csid_probe(struct platform_device *pdev)
 	new_csid_dev->csid_state = CSID_POWER_DOWN;
 	pr_err(" %s:%d CSID_POWER_DOWN %d \n",__func__,__LINE__,new_csid_dev->csid_state);
 
-/*                                                                                                                     */
+/* LGE_CHANGE_S [youngbae.choi@lge.com][20130625] : To enter the deep sleep after finish camera open , for google talk */
 	wake_lock_init(&new_csid_dev->csid_wake_lock, WAKE_LOCK_SUSPEND, "csid_wake_lock");
-/*                                                                                                                     */
+/* LGE_CHANGE_E [youngbae.choi@lge.com][20130625] : To enter the deep sleep after finish camera open , for google talk */
 	return 0;
 
 csid_no_resource:

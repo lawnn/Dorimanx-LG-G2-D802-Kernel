@@ -4017,11 +4017,7 @@ wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 
 	RETURN_EIO_IF_NOT_UP(wl);
 	WL_DBG(("Enter\n"));
-#ifdef CUSTOMER_HW10    //20130612, yoonjoong.kim, Apply PM for Wifi Direct concurrent BCM patch
-    if (wl->p2p_net == dev || _net_info == NULL ||
-#else
 	if (wl->p2p_net == dev || _net_info == NULL || wl->vsdb_mode ||
-#endif
 		!wl_get_drv_status(wl, CONNECTED, dev)) {
 		return err;
 	}
@@ -4029,11 +4025,8 @@ wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 	cancel_delayed_work_sync(&wl->pm_enable_work);
 	wl->pm_enable_work_on = false;
 	pm = enabled ? PM_FAST : PM_OFF;
-#ifdef CUSTOMER_HW10    //20130610, yoonjoong.kim, Apply PM for Wifi Direct from BCM
-        if (_net_info->pm_block && _net_info->mode == WL_MODE_AP) {
-#else
+
 	if (_net_info->pm_block) {
-#endif
 		WL_ERR(("%s:Do not enable the power save for pm_block %d\n",
 			dev->name, _net_info->pm_block));
 		pm = PM_OFF;

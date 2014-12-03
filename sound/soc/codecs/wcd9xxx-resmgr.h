@@ -106,10 +106,18 @@ struct wcd9xxx_resmgr {
 
 	u32 rx_bias_count;
 
+	/*
+	 * bandgap_type, bg_audio_users and bg_mbhc_users have to be
+	 * referred/manipulated after acquiring codec_bg_clk_lock mutex
+	 */
 	enum wcd9xxx_bandgap_type bandgap_type;
 	u16 bg_audio_users;
 	u16 bg_mbhc_users;
 
+	/*
+	 * clk_type, clk_rco_users and clk_mclk_users have to be
+	 * referred/manipulated after acquiring codec_bg_clk_lock mutex
+	 */
 	enum wcd9xxx_clock_type clk_type;
 	u16 clk_rco_users;
 	u16 clk_mclk_users;

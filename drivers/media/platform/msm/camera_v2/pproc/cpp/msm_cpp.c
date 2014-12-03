@@ -24,14 +24,14 @@
 #include <linux/proc_fs.h>
 #include <linux/msm_ion.h>
 #include <linux/iommu.h>
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 #include <linux/timer.h>
 #include <linux/kernel.h>
 #include <linux/workqueue.h>
 //#include <linux/debugfs.h>
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 #include <mach/iommu_domains.h>
 #include <mach/iommu.h>
 #include <mach/vreg.h>
@@ -54,7 +54,7 @@
 /* dump the frame command before writing to the hardware */
 #define  MSM_CPP_DUMP_FRM_CMD 0
 
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 #define CPP_CMD_TIMEOUT_MS 300
 
@@ -73,7 +73,7 @@ msm_cpp_timer_t cpp_timers[2];
 static int del_timer_idx=0;
 static int set_timer_idx=0;
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 #if CONFIG_MSM_CPP_DBG
 #define CPP_DBG(fmt, args...) pr_err(fmt, ##args)
@@ -138,7 +138,7 @@ static struct msm_cam_clk_info cpp_clk_info[] = {
 	{"micro_iface_clk", -1},
 };
 static int msm_cpp_notify_frame_done(struct cpp_device *cpp_dev);
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 static void cpp_load_fw(struct cpp_device *cpp_dev, char *fw_name_bin);
 void cpp_timer_callback(unsigned long data);
@@ -146,7 +146,7 @@ void cpp_timer_callback(unsigned long data);
 //uint8_t induce_error = 0;
 //static int msm_cpp_enable_debugfs(struct cpp_device *cpp_dev);
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 static void msm_cpp_write(u32 data, void __iomem *cpp_base)
 {
@@ -573,7 +573,7 @@ void msm_cpp_do_tasklet(unsigned long data)
 				msg_id = tx_fifo[i+2];
 				if (msg_id == MSM_CPP_MSG_ID_FRAME_ACK) {
 					CPP_DBG("Frame done!!\n");
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 					/* delete CPP timer */
 					CPP_DBG("deleting cpp_timer %d.\n", del_timer_idx);
@@ -582,7 +582,7 @@ void msm_cpp_do_tasklet(unsigned long data)
 					cpp_timers[del_timer_idx].data.processed_frame = NULL;
 					del_timer_idx = 1 - del_timer_idx;
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 					msm_cpp_notify_frame_done(cpp_dev);
 				}
 				i += cmd_len + 2;
@@ -591,7 +591,7 @@ void msm_cpp_do_tasklet(unsigned long data)
 	}
 }
 
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifndef CONFIG_USE_DUAL_ISP
 static void msm_cpp_boot_hw(struct cpp_device *cpp_dev)
 {
@@ -635,7 +635,7 @@ static void msm_cpp_boot_hw(struct cpp_device *cpp_dev)
 		MSM_CPP_MICRO_IRQGEN_CLR);
 }
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 static int cpp_init_hardware(struct cpp_device *cpp_dev)
 {
@@ -715,7 +715,7 @@ static int cpp_init_hardware(struct cpp_device *cpp_dev)
 	cpp_dev->taskletq_idx = 0;
 	atomic_set(&cpp_dev->irq_cnt, 0);
 	msm_cpp_create_buff_queue(cpp_dev, MSM_CPP_MAX_BUFF_QUEUE);
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	if (cpp_dev->is_firmware_loaded == 1) {
 		disable_irq(cpp_dev->irq->start);
@@ -731,7 +731,7 @@ static int cpp_init_hardware(struct cpp_device *cpp_dev)
 	if (cpp_dev->is_firmware_loaded == 1)
 		msm_cpp_boot_hw(cpp_dev);
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 	return rc;
 req_irq_fail:
 	iounmap(cpp_dev->cpp_hw_base);
@@ -782,7 +782,7 @@ static void cpp_load_fw(struct cpp_device *cpp_dev, char *fw_name_bin)
 	const struct firmware *fw = NULL;
 	struct device *dev = &cpp_dev->pdev->dev;
 
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	msm_camera_io_w(0x1, cpp_dev->base + MSM_CPP_MICRO_CLKEN_CTL);
 	msm_camera_io_w(0x1, cpp_dev->base +
@@ -863,7 +863,7 @@ static void cpp_load_fw(struct cpp_device *cpp_dev, char *fw_name_bin)
 	msm_cpp_poll(cpp_dev->base, MSM_CPP_MSG_ID_OK);
 	msm_cpp_poll(cpp_dev->base, MSM_CPP_MSG_ID_CMD);
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 	/*Trigger MC to jump to start address*/
 	msm_cpp_write(MSM_CPP_CMD_EXEC_JUMP, cpp_dev->base);
@@ -1077,13 +1077,15 @@ static int msm_cpp_dump_frame_cmd(uint32_t *cmd, int32_t len)
 }
 #endif
 
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
+/* LGE_CHANGE_S, QMC patch for kernel panic, 2013.7.25, yt.kim@lge.com */
 #if 0
 void msm_cpp_do_timeout_work(struct work_struct *work)
 #else
 static void msm_cpp_do_timeout_work(struct work_struct *work)
 #endif
+/* LGE_CHANGE_E, QMC patch for kernel panic, 2013.7.25, yt.kim@lge.com */
 {
 	int ret;
 	uint32_t i = 0;
@@ -1093,11 +1095,13 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 
 	pr_err("cpp_timer_callback called idx:%d. (jiffies=%lu)\n",
 		del_timer_idx, jiffies);
+/* LGE_CHANGE_S, QMC patch for kernel panic, 2013.7.25, yt.kim@lge.com */
 	if (!work || !this_frame) {
 		pr_err("Invalid work:%p, this_frame:%p, del_idx:%d\n",
 			work, this_frame, del_timer_idx);
 		return;
 	}
+/* LGE_CHANGE_E, QMC patch for kernel panic, 2013.7.25, yt.kim@lge.com */
 	pr_err("fatal: cpp_timer expired for identity=0x%x, frame_id=%03d",
 		this_frame->identity, this_frame->frame_id);
 	cpp_timers[del_timer_idx].used = 0;
@@ -1173,18 +1177,18 @@ void cpp_timer_callback(unsigned long data)
 		(struct work_struct *)cpp_timers[set_timer_idx].data.cpp_dev->work);
 }
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 static int msm_cpp_send_frame_to_hardware(struct cpp_device *cpp_dev,
 	struct msm_queue_cmd *frame_qcmd)
 {
 	uint32_t i;
 	int32_t rc = -EAGAIN;
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	int ret;
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 	struct msm_cpp_frame_info_t *process_frame;
 
 	if (cpp_dev->processing_q.len < MAX_CPP_PROCESSING_FRAME) {
@@ -1192,7 +1196,7 @@ static int msm_cpp_send_frame_to_hardware(struct cpp_device *cpp_dev,
 		msm_enqueue(&cpp_dev->processing_q,
 					&frame_qcmd->list_frame);
 
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 		cpp_timers[set_timer_idx].data.processed_frame = process_frame;
 		cpp_timers[set_timer_idx].used = 1;
@@ -1209,7 +1213,7 @@ static int msm_cpp_send_frame_to_hardware(struct cpp_device *cpp_dev,
 
 		set_timer_idx = 1 - set_timer_idx;
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 		msm_cpp_write(0x6, cpp_dev->base);
 		msm_cpp_dump_frame_cmd(process_frame->cpp_cmd_msg,
@@ -1244,11 +1248,11 @@ static int msm_cpp_cfg(struct cpp_device *cpp_dev,
 	struct msm_cpp_frame_info_t *u_frame_info =
 		(struct msm_cpp_frame_info_t *)ioctl_ptr->ioctl_ptr;
 	int32_t status = 0;
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	uint8_t fw_version_1_2_x = 0;
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 	int i = 0;
 	if (!new_frame) {
@@ -1355,7 +1359,7 @@ static int msm_cpp_cfg(struct cpp_device *cpp_dev,
 		((cpp_frame_msg[12] >> 10) & 0x3FF) +
 		(cpp_frame_msg[12] & 0x3FF);
 
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	fw_version_1_2_x = 0;
 	if (cpp_dev->hw_info.cpp_hw_version == 0x10010000) {
@@ -1382,7 +1386,7 @@ static int msm_cpp_cfg(struct cpp_device *cpp_dev,
 		cpp_frame_msg[142 + i * 27] += (uint32_t) out_phyaddr1;
 	}
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 	frame_qcmd = kzalloc(sizeof(struct msm_queue_cmd), GFP_KERNEL);
 	if (!frame_qcmd) {
@@ -1433,11 +1437,11 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 	struct cpp_device *cpp_dev = v4l2_get_subdevdata(sd);
 	struct msm_camera_v4l2_ioctl_t *ioctl_ptr = arg;
 	int rc = 0;
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifndef CONFIG_USE_DUAL_ISP
 	char *fw_name_bin;
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 	mutex_lock(&cpp_dev->mutex);
 	CPP_DBG("E cmd: %d\n", cmd);
@@ -1454,7 +1458,7 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 
 	case VIDIOC_MSM_CPP_LOAD_FIRMWARE: {
 		if (cpp_dev->is_firmware_loaded == 0) {
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 			if (cpp_dev->fw_name_bin) {
 				kfree(cpp_dev->fw_name_bin);
@@ -1504,7 +1508,7 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 			cpp_load_fw(cpp_dev, fw_name_bin);
 			kfree(fw_name_bin);
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 			enable_irq(cpp_dev->irq->start);
 			cpp_dev->is_firmware_loaded = 1;
 		}
@@ -1855,18 +1859,18 @@ static int __devinit cpp_probe(struct platform_device *pdev)
 
 	cpp_release_hardware(cpp_dev);
 	cpp_dev->state = CPP_STATE_OFF;
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	//msm_cpp_enable_debugfs(cpp_dev);
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 	msm_queue_init(&cpp_dev->eventData_q, "eventdata");
 	msm_queue_init(&cpp_dev->processing_q, "frame");
 	INIT_LIST_HEAD(&cpp_dev->tasklet_q);
 	tasklet_init(&cpp_dev->cpp_tasklet, msm_cpp_do_tasklet,
 		(unsigned long)cpp_dev);
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	cpp_dev->timer_wq = create_workqueue("msm_cpp_workqueue");
 	cpp_dev->work =
@@ -1884,7 +1888,7 @@ static int __devinit cpp_probe(struct platform_device *pdev)
 	cpp_dev->cpp_open_cnt = 0;
 	cpp_dev->is_firmware_loaded = 0;
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 	return rc;
 
 ERROR3:
@@ -1924,12 +1928,12 @@ static int cpp_device_remove(struct platform_device *dev)
 	release_mem_region(cpp_dev->cpp_hw_mem->start,
 		resource_size(cpp_dev->cpp_hw_mem));
 	mutex_destroy(&cpp_dev->mutex);
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 	kfree(cpp_dev->work);
 	destroy_workqueue(cpp_dev->timer_wq);
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 	kfree(cpp_dev->cpp_clk);
 	kfree(cpp_dev);
 	return 0;
@@ -1954,7 +1958,7 @@ static void __exit msm_cpp_exit_module(void)
 {
 	platform_driver_unregister(&cpp_driver);
 }
-/*                                                                                   */
+/* LGE_CHANGE_S, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[Start] */
 #ifdef CONFIG_USE_DUAL_ISP
 //
 //static int msm_cpp_debugfs_error_s(void *data, u64 val)
@@ -1981,7 +1985,7 @@ static void __exit msm_cpp_exit_module(void)
 //	return 0;
 //}
 #endif
-/*                                                                                 */
+/* LGE_CHANGE_E, add the dual isp patch code from QCT, 2013.6.20, youngil.yun[End] */
 
 module_init(msm_cpp_init_module);
 module_exit(msm_cpp_exit_module);

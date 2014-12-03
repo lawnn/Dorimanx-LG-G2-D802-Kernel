@@ -47,9 +47,9 @@ enum {
 
 static void __iomem *virt_bases[N_BASES];
 #ifdef CONFIG_MACH_LGE
-/*           
-                                               
-                                  
+/* LGE_CHANGE
+* This is for auto pll patch from case#01156220
+* 2013-05-25, baryun.hwang@lge.com
 */
 #define QCT_AUTO_PLL_PATCH
 #endif
@@ -841,7 +841,7 @@ static struct clk_freq_tbl ftbl_gcc_blsp1_2_qup1_6_spi_apps_clk[] = {
 	F(960000,     cxo, 10, 1, 2),
 	F(4800000,    cxo,  4, 0, 0),
 #if defined(CONFIG_LGE_BROADCAST_TDMB)
-	F(7207207, gpll0, 4.5, 2, 37), //                                       
+	F(7207207, gpll0, 4.5, 2, 37), //for using 7.207MHz spi clock in LGE DMB
 #endif
 	F(9600000,    cxo,  2, 0, 0),
 	F(15000000, gpll0, 10, 1, 4),
@@ -1422,8 +1422,8 @@ static struct rcg_clk ce2_clk_src = {
 };
 
 static struct clk_freq_tbl ftbl_gcc_gp_clk[] = {
-/*                                
-                                          
+/* soojung.lim@lge.com, 2013-05-23
+ * To use 24MHz GP/GCC_GP clock for V2 H/W
  */
 	 F( 4800000, cxo, 4, 0, 0),
 	 F( 6000000, cxo, 10, 1, 10),
@@ -4830,17 +4830,17 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("xo",       cxo_dwc3_clk.c,                 "msm_dwc3"),
 	CLK_LOOKUP("xo",  cxo_ehci_host_clk.c,            "msm_ehci_host"),
 
-/*                                                                      */
+/*  LGE_CHANGE_S, [NFC][byunggu.kang@lge.com], 2013-02-27, NFC Bring up */
 #ifdef CONFIG_NFC_BCM2079X
 	CLK_LOOKUP("xo",	   cxo_d1_pin.c,		"nfc_nci"),
 #endif
-/*                                                                      */
+/*  LGE_CHANGE_E, [NFC][byunggu.kang@lge.com], 2013-02-27, NFC Bring up */
 
-/*                                                                     */
+/*  LGE_CHANGE_S, [NFC][minwoo.kwon@lge.com], 2013-03-13, NFC Bring up */
 #ifdef CONFIG_LGE_NFC_PN544_C3
 	CLK_LOOKUP("xo",	   cxo_d1_pin.c,			"nfc_nxp"),
 #endif
-/*                                                                     */
+/*  LGE_CHANGE_E, [NFC][minwoo.kwon@lge.com], 2013-03-13, NFC Bring up */
 
 
 #if defined(CONFIG_LGE_BROADCAST_TDMB)
@@ -4848,10 +4848,10 @@ static struct clk_lookup msm_clocks_8974[] = {
 #if defined (CONFIG_MACH_MSM8974_Z_KR) || defined (CONFIG_MACH_MSM8974_Z_US) || defined (CONFIG_MACH_MSM8974_Z_KDDI)
 	CLK_LOOKUP("xo",	cxo_a2.c,	"spi101.0"),
 #endif
-#endif /*               */ 
+#endif /* LGE_BROADCAST */ 
 #if defined(CONFIG_LGE_BROADCAST_ONESEG) && (defined(CONFIG_MACH_MSM8974_G2_KDDI) || defined(CONFIG_MACH_MSM8974_G2_DCM))
 		CLK_LOOKUP("xo",	cxo_a2.c,	"spi8.0"),
-#endif /*                      */
+#endif /* LGE_BROADCAST ONESEG */
 
 	CLK_LOOKUP("measure",	measure_clk.c,	"debug"),
 
@@ -4913,7 +4913,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 #endif
 #if defined(CONFIG_LGE_BROADCAST_TDMB) || (defined(CONFIG_LGE_BROADCAST_ONESEG) && (defined(CONFIG_MACH_MSM8974_G2_KDDI) || defined(CONFIG_MACH_MSM8974_G2_DCM)))
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9964000.spi"),
-#endif /*               */
+#endif /* LGE_BROADCAST */
 #ifdef CONFIG_LGE_IRRC
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9962000.serial"),
 #else
@@ -4931,7 +4931,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_spi_apps_clk.c, "f9964000.spi"),
 #else
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_spi_apps_clk.c, ""),
-#endif /*               */
+#endif /* LGE_BROADCAST */
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup3_i2c_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup3_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup4_i2c_apps_clk.c, ""),
@@ -4947,7 +4947,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("core_clk", gcc_blsp2_uart4_apps_clk.c, "f9960000.uart"),
 #else
 	CLK_LOOKUP("core_clk", gcc_blsp2_uart4_apps_clk.c, ""),
-#endif /*                      */
+#endif /* CONFIG_LGE_BLUETOOTH */
 	CLK_LOOKUP("core_clk", gcc_blsp2_uart5_apps_clk.c, ""),
 #ifdef CONFIG_LGE_IRRC
 	CLK_LOOKUP("core_clk", gcc_blsp2_uart6_apps_clk.c, "f9962000.serial"),
@@ -5063,9 +5063,9 @@ static struct clk_lookup msm_clocks_8974[] = {
 	/* MM sensor clocks */
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6e.qcom,camera"),
 
-/*                                
-                                          
-                                                                  
+/* soojung.lim@lge.com, 2013-05-23
+ * To use 24MHz GP/GCC_GP clock for V2 H/W
+ * To use 19.2MHz MCLK, then use the below mclk0 and mclk2 setting
  */
 #ifdef CONFIG_MACH_LGE
 	CLK_LOOKUP("cam_src_clk", mmss_gp0_clk_src.c, "20.qcom,camera_rev_a"),
@@ -5622,18 +5622,18 @@ static void __init msm8974_clock_post_init(void)
 	 */
 	clk_prepare_enable(&cxo_a_clk_src.c);
 
-/*                                                                      */
+/*  LGE_CHANGE_S, [NFC][byunggu.kang@lge.com], 2013-02-27, NFC Bring up */
 #ifdef CONFIG_NFC_BCM2079X
 	clk_prepare_enable(&cxo_d1_pin.c);
 #endif
-/*                                                                      */
+/*  LGE_CHANGE_E, [NFC][byunggu.kang@lge.com], 2013-02-27, NFC Bring up */
 
 
-/*                                                                     */
+/*  LGE_CHANGE_S, [NFC][minwoo.kwon@lge.com], 2013-03-13, NFC Bring up */
 #ifdef CONFIG_LGE_NFC_PN544_C3
 	clk_prepare_enable(&cxo_d1_pin.c);
 #endif
-/*                                                                     */
+/*  LGE_CHANGE_E, [NFC][minwoo.kwon@lge.com], 2013-03-13, NFC Bring up */
 
 
 	/*
