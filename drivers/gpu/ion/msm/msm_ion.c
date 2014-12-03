@@ -17,7 +17,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/memory_alloc.h>
-#include <linux/fmem.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/mm.h>
@@ -53,7 +52,7 @@ static struct ion_heap_desc ion_heap_meta[] = {
 	{
 		.id	= ION_SYSTEM_HEAP_ID,
 		.type	= ION_HEAP_TYPE_SYSTEM,
-		.name	= ION_VMALLOC_HEAP_NAME,
+		.name	= ION_SYSTEM_HEAP_NAME,
 	},
 	{
 		.id	= ION_SYSTEM_CONTIG_HEAP_ID,
@@ -128,6 +127,16 @@ static struct ion_heap_desc ion_heap_meta[] = {
 struct ion_client *msm_ion_client_create(unsigned int heap_mask,
 					const char *name)
 {
+	/*
+	 * The assumption is that if there is a NULL device, the ion
+	 * driver has not yet probed.
+	 */
+	if (idev == NULL)
+		return ERR_PTR(-EPROBE_DEFER);
+
+	if (IS_ERR(idev))
+		return (struct ion_client *)idev;
+
 	return ion_client_create(idev, name);
 }
 EXPORT_SYMBOL(msm_ion_client_create);
@@ -365,6 +374,9 @@ int ion_do_cache_op(struct ion_client *client, struct ion_handle *handle,
 	if (!ION_IS_CACHED(flags))
 		return 0;
 
+	if (flags & ION_FLAG_SECURE)
+		return 0;
+
 	table = ion_sg_table(client, handle);
 
 	if (IS_ERR_OR_NULL(table))
@@ -419,22 +431,9 @@ static void ion_set_base_address(struct ion_platform_heap *heap,
 			    struct ion_co_heap_pdata *co_heap_data,
 			    struct ion_cp_heap_pdata *cp_data)
 {
-	if (cp_data->reusable) {
-		const struct fmem_data *fmem_info = fmem_get_info();
-
-		if (!fmem_info) {
-			pr_err("fmem info pointer NULL!\n");
-			BUG();
-		}
-
-		heap->base = fmem_info->phys - fmem_info->reserved_size_low;
-		cp_data->virt_addr = fmem_info->virt;
-		pr_info("ION heap %s using FMEM\n", shared_heap->name);
-	} else {
-		heap->base = msm_ion_get_base(heap->size + shared_heap->size,
-						shared_heap->memory_type,
-						co_heap_data->align);
-	}
+	heap->base = msm_ion_get_base(heap->size + shared_heap->size,
+					shared_heap->memory_type,
+					co_heap_data->align);
 	if (heap->base) {
 		shared_heap->base = heap->base + heap->size;
 		cp_data->secure_base = heap->base;
@@ -460,15 +459,6 @@ static void allocate_co_memory(struct ion_platform_heap *heap,
 			struct ion_cp_heap_pdata *cp_data =
 			   (struct ion_cp_heap_pdata *) shared_heap->extra_data;
 			if (cp_data->fixed_position == FIXED_MIDDLE) {
-				const struct fmem_data *fmem_info =
-					fmem_get_info();
-
-				if (!fmem_info) {
-					pr_err("fmem info pointer NULL!\n");
-					BUG();
-				}
-
-				cp_data->virt_addr = fmem_info->virt;
 				if (!cp_data->secure_base) {
 					cp_data->secure_base = heap->base;
 					cp_data->secure_size =
@@ -520,17 +510,6 @@ static void msm_ion_allocate(struct ion_platform_heap *heap)
 			struct ion_cp_heap_pdata *data =
 				(struct ion_cp_heap_pdata *)
 				heap->extra_data;
-			if (data->reusable) {
-				const struct fmem_data *fmem_info =
-					fmem_get_info();
-				heap->base = fmem_info->phys;
-				data->virt_addr = fmem_info->virt;
-				pr_info("ION heap %s using FMEM\n", heap->name);
-			} else if (data->mem_is_fmem) {
-				const struct fmem_data *fmem_info =
-					fmem_get_info();
-				heap->base = fmem_info->phys + fmem_info->size;
-			}
 			align = data->align;
 			break;
 		}
@@ -1027,6 +1006,7 @@ static void msm_ion_heap_destroy(struct ion_heap *heap)
 
 static int msm_ion_probe(struct platform_device *pdev)
 {
+	static struct ion_device *new_dev;
 	struct ion_platform_data *pdata;
 	unsigned int pdata_needs_to_be_freed;
 	int err = -1;
@@ -1052,9 +1032,14 @@ static int msm_ion_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-	idev = ion_device_create(msm_ion_custom_ioctl);
-	if (IS_ERR_OR_NULL(idev)) {
-		err = PTR_ERR(idev);
+	new_dev = ion_device_create(msm_ion_custom_ioctl);
+	if (IS_ERR_OR_NULL(new_dev)) {
+		/*
+		 * set this to the ERR to indicate to the clients
+		 * that Ion failed to probe.
+		 */
+		idev = new_dev;
+		err = PTR_ERR(new_dev);
 		goto freeheaps;
 	}
 
@@ -1081,13 +1066,18 @@ static int msm_ion_probe(struct platform_device *pdev)
 							  heap_data->name);
 		}
 
-		ion_device_add_heap(idev, heaps[i]);
+		ion_device_add_heap(new_dev, heaps[i]);
 	}
 	check_for_heap_overlap(pdata->heaps, num_heaps);
 	if (pdata_needs_to_be_freed)
 		free_pdata(pdata);
 
-	platform_set_drvdata(pdev, idev);
+	platform_set_drvdata(pdev, new_dev);
+	/*
+	 * intentionally set this at the very end to allow probes to be deferred
+	 * completely until Ion is setup
+	 */
+	idev = new_dev;
 	return 0;
 
 freeheaps:

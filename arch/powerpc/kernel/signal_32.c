@@ -244,17 +244,8 @@ static inline int restore_general_regs(struct pt_regs *regs,
 long sys_sigsuspend(old_sigset_t mask)
 {
 	sigset_t blocked;
-
-	current->saved_sigmask = current->blocked;
-
-	mask &= _BLOCKABLE;
 	siginitset(&blocked, mask);
-	set_current_blocked(&blocked);
-
- 	current->state = TASK_INTERRUPTIBLE;
- 	schedule();
-	set_restore_sigmask();
- 	return -ERESTARTNOHAND;
+	return sigsuspend(&blocked);
 }
 
 long sys_sigaction(int sig, struct old_sigaction __user *act,
@@ -447,6 +438,12 @@ static int save_user_regs(struct pt_regs *regs, struct mcontext __user *frame,
 #endif /* CONFIG_ALTIVEC */
 	if (copy_fpr_to_user(&frame->mc_fregs, current))
 		return 1;
+
+	/*
+	 * Clear the MSR VSX bit to indicate there is no valid state attached
+	 * to this context, except in the specific case below where we set it.
+	 */
+	msr &= ~MSR_VSX;
 #ifdef CONFIG_VSX
 	/*
 	 * Copy VSR 0-31 upper half from thread_struct to local

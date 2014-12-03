@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,7 +36,8 @@
 	(((slv >= MSM_BUS_SLAVE_FIRST) && (slv <= MSM_BUS_SLAVE_LAST)) ? 1 : 0)
 
 #define INTERLEAVED_BW(fab_pdata, bw, ports) \
-	((fab_pdata->il_flag) ? msm_bus_div64((ports), (bw)) : (bw))
+	((fab_pdata->il_flag) ? ((bw < 0) \
+	? -msm_bus_div64((ports), (-bw)) : msm_bus_div64((ports), (bw))) : (bw))
 #define INTERLEAVED_VAL(fab_pdata, n) \
 	((fab_pdata->il_flag) ? (n) : 1)
 
@@ -81,6 +82,14 @@ struct msm_bus_node_info {
 	unsigned int prio_wr;
 	unsigned int prio1;
 	unsigned int prio0;
+	unsigned int num_thresh;
+	u64 *th;
+	u64 cur_lim_bw;
+	unsigned int mode_thresh;
+	bool dual_conf;
+	u64 *bimc_bw;
+	u32 bimc_gp;
+	u32 bimc_thmp;
 	const char *name;
 };
 
@@ -147,6 +156,9 @@ struct msm_bus_hw_algorithm {
 		*fab_pdata, void *hw_data, void **cdata);
 	int (*port_unhalt)(uint32_t haltid, uint8_t mport);
 	int (*port_halt)(uint32_t haltid, uint8_t mport);
+	void (*config_master)(struct msm_bus_fabric_registration *fab_pdata,
+		struct msm_bus_inode_info *info,
+		uint64_t req_clk, uint64_t req_bw);
 };
 
 struct msm_bus_fabric_device {
@@ -179,6 +191,9 @@ struct msm_bus_fab_algorithm {
 	void (*update_bw)(struct msm_bus_fabric_device *fabdev, struct
 		msm_bus_inode_info * hop, struct msm_bus_inode_info *info,
 		int64_t add_bw, int *master_tiers, int ctx);
+	void (*config_master)(struct msm_bus_fabric_device *fabdev,
+		struct msm_bus_inode_info *info, uint64_t req_clk,
+		uint64_t req_bw);
 };
 
 struct msm_bus_board_algorithm {

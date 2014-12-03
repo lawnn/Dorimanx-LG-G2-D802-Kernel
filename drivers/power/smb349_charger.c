@@ -60,6 +60,10 @@
 
 #define SMB349_MASK(BITS, POS)  ((unsigned char)(((1 << BITS) - 1) << POS))
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+#include <linux/fastchg.h>
+#endif
+
 /* Register definitions */
 #define CHG_CURRENT_REG                         0x00
 #define CHG_OTHER_CURRENT_REG                   0x01
@@ -1994,7 +1998,7 @@ static void smb349_bb_worker(struct work_struct *work)
 	int ret;
 
 	chg_current = smb349_get_prop_batt_current_now(smb349_chg);
-	smb349_console_silent = 0;
+	smb349_console_silent = 1;
 
 	if (smb349_chg->irq_trigger_cnt > (ULONG_MAX - 100)) {
 		smb349_chg->irq_trigger_cnt = 1;
@@ -3137,6 +3141,9 @@ static int smb349_input_current_limit_set(struct smb349_struct *smb349_chg, int 
 {
 	int i;
 	u8 temp;
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	int custom_ma = icl_ma;
+#endif
 
 	if ((icl_ma < SMB349_INPUT_CURRENT_LIMIT_MIN_MA) ||
 		(icl_ma >  SMB349_INPUT_CURRENT_LIMIT_MAX_MA)) {
@@ -3154,7 +3161,46 @@ static int smb349_input_current_limit_set(struct smb349_struct *smb349_chg, int 
 		i = 0;
 	}
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	if (force_fast_charge == 1) {
+		i = 4;
+		custom_ma = FAST_CHARGE_1200;
+		icl_ma = custom_ma;
+	} else if (force_fast_charge == 2) {
+		switch (fast_charge_level) {
+			case FAST_CHARGE_500:
+				i = 0;
+				custom_ma = FAST_CHARGE_500;
+				break;
+			case FAST_CHARGE_900:
+				i = 1;
+				custom_ma = FAST_CHARGE_900;
+				break;
+			case FAST_CHARGE_1200:
+				i = 4;
+				custom_ma = FAST_CHARGE_1200;
+				break;
+			case FAST_CHARGE_1500:
+				i = 6;
+				custom_ma = FAST_CHARGE_1500;
+				break;
+			case FAST_CHARGE_1800:
+				i = 9;
+				custom_ma = FAST_CHARGE_1800;
+				break;
+			case FAST_CHARGE_2000:
+				i = 0xA;
+				custom_ma = FAST_CHARGE_2000;
+				break;
+			default:
+				break;
+		}
+		icl_ma = custom_ma;
+	}
 	temp = icl_ma_table[i].value;
+#else
+	temp = icl_ma_table[i].value;
+#endif
 
 	pr_info("input current limit=%d setting %02x\n", icl_ma, temp);
 	return smb349_masked_write(smb349_chg->client, CHG_CURRENT_REG,
@@ -3983,6 +4029,7 @@ static void smb349_status_print(struct smb349_struct *smb349_chg)
 	smb349_chg->batt_psy.get_property(&(smb349_chg->batt_psy),
 			  POWER_SUPPLY_PROP_CHARGE_TYPE, &ret);
 
+#if 0
 	printk(KERN_ERR "[chglog]EN:%d ERR:%d STAT:%c M:%c U:%d EOC:%d RE:%d BL:%c BO:%d BM:%d HOFF:%d TO:%c SYS:%d IT:%d TEMP:0x%02X PSY:[PRE:%d,ON:%d-%d,TYP:%d]\n",
 			val_3d & BIT(0)? 1: 0,		/* EN:charging enable */
 			val_3d & BIT(6)? 1: 0,		/* ERR:charging error */
@@ -4003,6 +4050,7 @@ static void smb349_status_print(struct smb349_struct *smb349_chg)
 			smb349_chg->usb_online, smb349_chg->ac_online, /* ON: power_supply online usb_online-ac_online */
 			ret.intval			/* TYP: power_supply charger type*/
 		);
+#endif
 }
 #endif
 

@@ -1914,6 +1914,12 @@ static void touch_gesture_wakeup_func(struct work_struct *work_gesture_wakeup)
 	}
 	mutex_unlock(&i2c_suspend_lock);
 	TOUCH_INFO_MSG("INTERRUPT_STATUS_REG %x\n", buf);
+
+	/* AOSP HACK */
+	input_report_key(ts->input_dev, KEY_POWER, BUTTON_PRESSED);
+	input_report_key(ts->input_dev, KEY_POWER, BUTTON_RELEASED);
+	input_sync(ts->input_dev);
+
 	if( buf & 0x04 )
 		kobject_uevent_env(&lge_touch_sys_device.kobj, KOBJ_CHANGE, touch_wakeup_gesture);
 	else
@@ -4765,6 +4771,10 @@ static int touch_probe(struct i2c_client *client, const struct i2c_device_id *id
 	}
 
 #ifndef CONFIG_LGE_Z_TOUCHSCREEN
+	/* AOSP HACK */
+	set_bit(EV_KEY, ts->input_dev->evbit);
+	set_bit(KEY_POWER, ts->input_dev->keybit);
+
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, ts->pdata->caps->x_max, 0, 0);
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0,
 			ts->pdata->caps->y_button_boundary
@@ -4779,9 +4789,6 @@ static int touch_probe(struct i2c_client *client, const struct i2c_device_id *id
 		input_set_abs_params(ts->input_dev, ABS_MT_WIDTH_MINOR, 0, ts->pdata->caps->max_width, 0, 0);
 		input_set_abs_params(ts->input_dev, ABS_MT_ORIENTATION, 0, 1, 0, 0);
 	}
-#ifdef CUST_G2_TOUCH
-	input_set_abs_params(ts->input_dev, ABS_MT_TOOL_TYPE,0, MT_TOOL_MAX, 0, 0);
-#endif
 
 #if defined(MT_PROTOCOL_A)
 	if (ts->pdata->caps->is_id_supported)

@@ -38,6 +38,7 @@
 
 static struct kgsl_iommu_register_list kgsl_iommuv0_reg[KGSL_IOMMU_REG_MAX] = {
 	{ 0, 0 },			/* GLOBAL_BASE */
+	{ 0x0, 1 },			/* SCTLR */
 	{ 0x10, 1 },			/* TTBR0 */
 	{ 0x14, 1 },			/* TTBR1 */
 	{ 0x20, 1 },			/* FSR */
@@ -54,6 +55,7 @@ static struct kgsl_iommu_register_list kgsl_iommuv0_reg[KGSL_IOMMU_REG_MAX] = {
 
 static struct kgsl_iommu_register_list kgsl_iommuv1_reg[KGSL_IOMMU_REG_MAX] = {
 	{ 0, 0 },			/* GLOBAL_BASE */
+	{ 0x0, 1 },			/* SCTLR */
 	{ 0x20, 1 },			/* TTBR0 */
 	{ 0x28, 1 },			/* TTBR1 */
 	{ 0x58, 1 },			/* FSR */
@@ -61,8 +63,8 @@ static struct kgsl_iommu_register_list kgsl_iommuv1_reg[KGSL_IOMMU_REG_MAX] = {
 	{ 0x008, 1 },			/* RESUME */
 	{ 0, 0 },			/* TLBLKCR not in V1 */
 	{ 0, 0 },			/* V2PUR not in V1 */
-	{ 0x68, 0 },			/* FSYNR0 */
-	{ 0x6C, 0 },			/* FSYNR1 */
+	{ 0x68, 1 },			/* FSYNR0 */
+	{ 0x6C, 1 },			/* FSYNR1 */
 	{ 0x7F0, 1 },			/* TLBSYNC */
 	{ 0x7F4, 1 },			/* TLBSTATUS */
 	{ 0x2000, 0 }			/* IMPLDEF_MICRO_MMU_CRTL */
@@ -70,16 +72,18 @@ static struct kgsl_iommu_register_list kgsl_iommuv1_reg[KGSL_IOMMU_REG_MAX] = {
 
 static struct iommu_access_ops *iommu_access_ops;
 
-static void _iommu_lock(void)
+static void _iommu_lock(struct kgsl_iommu const *iommu)
 {
 	if (iommu_access_ops && iommu_access_ops->iommu_lock_acquire)
-		iommu_access_ops->iommu_lock_acquire();
+		iommu_access_ops->iommu_lock_acquire(
+						iommu->sync_lock_initialized);
 }
 
-static void _iommu_unlock(void)
+static void _iommu_unlock(struct kgsl_iommu const *iommu)
 {
 	if (iommu_access_ops && iommu_access_ops->iommu_lock_release)
-		iommu_access_ops->iommu_lock_release();
+		iommu_access_ops->iommu_lock_release(
+						iommu->sync_lock_initialized);
 }
 
 struct remote_iommu_petersons_spinlock kgsl_iommu_sync_lock_vars;
@@ -287,7 +291,7 @@ static void _check_if_freed(struct kgsl_iommu_device *iommu_dev,
 				addr < (p->gpuaddr + p->size)) {
 
 				kgsl_get_memory_usage(name, sizeof(name) - 1,
-					p->flags),
+					p->flags);
 				KGSL_LOG_DUMP(iommu_dev->kgsldev,
 					"---- premature free ----\n");
 				KGSL_LOG_DUMP(iommu_dev->kgsldev,
@@ -330,6 +334,15 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	ret = get_iommu_unit(dev, &mmu, &iommu_unit);
 	if (ret)
 		goto done;
+
+	device = mmu->device;
+	adreno_dev = ADRENO_DEVICE(device);
+	if (atomic_read(&mmu->fault)) {
+		if (adreno_dev->ft_pf_policy & KGSL_FT_PAGEFAULT_GPUHALT_ENABLE)
+			ret = -EBUSY;
+		goto done;
+	}
+
 	iommu_dev = get_iommu_device(iommu_unit, dev);
 	if (!iommu_dev) {
 		KGSL_CORE_ERR("Invalid IOMMU device %p\n", dev);
@@ -337,8 +350,6 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 		goto done;
 	}
 	iommu = mmu->priv;
-	device = mmu->device;
-	adreno_dev = ADRENO_DEVICE(device);
 
 	ptbase = KGSL_IOMMU_GET_CTX_REG(iommu, iommu_unit,
 					iommu_dev->ctx_id, TTBR0);
@@ -390,7 +401,7 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 
 	}
 
-	mmu->fault = 1;
+	atomic_set(&mmu->fault, 1);
 	iommu_dev->fault = 1;
 
 	kgsl_sharedmem_readl(&device->memstore, &curr_context_id,
@@ -803,6 +814,7 @@ static int _get_iommu_ctxs(struct kgsl_mmu *mmu,
 	struct kgsl_iommu_unit *iommu_unit = &iommu->iommu_units[unit_id];
 	int i, j;
 	int found_ctx;
+	int ret = 0;
 
 	for (j = 0; j < KGSL_IOMMU_MAX_DEVS_PER_UNIT; j++) {
 		found_ctx = 0;
@@ -816,16 +828,21 @@ static int _get_iommu_ctxs(struct kgsl_mmu *mmu,
 			break;
 		if (!data->iommu_ctxs[i].iommu_ctx_name) {
 			KGSL_CORE_ERR("Context name invalid\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto done;
 		}
 
 		iommu_unit->dev[iommu_unit->dev_count].dev =
 			msm_iommu_get_ctx(data->iommu_ctxs[i].iommu_ctx_name);
-		if (iommu_unit->dev[iommu_unit->dev_count].dev == NULL) {
-			KGSL_CORE_ERR("Failed to get iommu dev handle for "
-			"device %s\n", data->iommu_ctxs[i].iommu_ctx_name);
-			return -EINVAL;
+		if (NULL == iommu_unit->dev[iommu_unit->dev_count].dev)
+			ret = -EINVAL;
+		if (IS_ERR(iommu_unit->dev[iommu_unit->dev_count].dev)) {
+			ret = PTR_ERR(
+				iommu_unit->dev[iommu_unit->dev_count].dev);
+			iommu_unit->dev[iommu_unit->dev_count].dev = NULL;
 		}
+		if (ret)
+			goto done;
 		iommu_unit->dev[iommu_unit->dev_count].ctx_id =
 						data->iommu_ctxs[i].ctx_id;
 		iommu_unit->dev[iommu_unit->dev_count].kgsldev = mmu->device;
@@ -837,12 +854,23 @@ static int _get_iommu_ctxs(struct kgsl_mmu *mmu,
 
 		iommu_unit->dev_count++;
 	}
-	if (!j) {
-		KGSL_CORE_ERR("No ctxts initialized, user ctxt absent\n ");
-		return -EINVAL;
+done:
+	if (!iommu_unit->dev_count && !ret)
+		ret = -EINVAL;
+	if (ret) {
+		/*
+		 * If at least the first context is initialized on v1
+		 * then we can continue
+		 */
+		if (!msm_soc_version_supports_iommu_v0() &&
+			iommu_unit->dev_count)
+			ret = 0;
+		else
+			KGSL_CORE_ERR(
+			"Failed to initialize iommu contexts, err: %d\n", ret);
 	}
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -886,6 +914,8 @@ static int kgsl_iommu_start_sync_lock(struct kgsl_mmu *mmu)
 	return 0;
 }
 
+#ifdef CONFIG_MSM_IOMMU_GPU_SYNC
+
 /*
  * kgsl_get_sync_lock - Init Sync Lock between GPU and CPU
  * @mmu - Pointer to mmu device
@@ -918,7 +948,7 @@ static int kgsl_iommu_init_sync_lock(struct kgsl_mmu *mmu)
 	if (iommu->sync_lock_initialized)
 		return status;
 
-	iommu_access_ops = get_iommu_access_ops_v0();
+	iommu_access_ops = msm_get_iommu_access_ops();
 
 	if (iommu_access_ops && iommu_access_ops->iommu_lock_initialize) {
 		lock_phy_addr = (uint32_t)
@@ -953,6 +983,12 @@ static int kgsl_iommu_init_sync_lock(struct kgsl_mmu *mmu)
 
 	return status;
 }
+#else
+static int kgsl_iommu_init_sync_lock(struct kgsl_mmu *mmu)
+{
+	return 0;
+}
+#endif
 
 /*
  * kgsl_iommu_sync_lock - Acquire Sync Lock between GPU and CPU
@@ -1127,7 +1163,8 @@ static int kgsl_set_register_map(struct kgsl_mmu *mmu)
 		if (ret)
 			goto err;
 
-		iommu_unit->iommu_halt_enable = data.iommu_halt_enable;
+		if (!msm_soc_version_supports_iommu_v0())
+			iommu_unit->iommu_halt_enable = 1;
 		iommu_unit->ahb_base = data.physstart - mmu->device->reg_phys;
 	}
 	iommu->unit_count = pdata_dev->iommu_count;
@@ -1308,6 +1345,7 @@ static int kgsl_iommu_init(struct kgsl_mmu *mmu)
 	int status = 0;
 	struct kgsl_iommu *iommu;
 
+	atomic_set(&mmu->fault, 0);
 	iommu = kzalloc(sizeof(struct kgsl_iommu), GFP_KERNEL);
 	if (!iommu) {
 		KGSL_CORE_ERR("kzalloc(%d) failed\n",
@@ -1573,6 +1611,8 @@ static int kgsl_iommu_start(struct kgsl_mmu *mmu)
 	int status;
 	struct kgsl_iommu *iommu = mmu->priv;
 	int i, j;
+	int sctlr_val = 0;
+	struct adreno_device *adreno_dev = ADRENO_DEVICE(mmu->device);
 
 	if (mmu->flags & KGSL_FLAGS_STARTED)
 		return 0;
@@ -1620,10 +1660,29 @@ static int kgsl_iommu_start(struct kgsl_mmu *mmu)
 	 * changing pagetables we can use this lsb value of the pagetable w/o
 	 * having to read it again
 	 */
-	_iommu_lock();
+	_iommu_lock(iommu);
 	for (i = 0; i < iommu->unit_count; i++) {
 		struct kgsl_iommu_unit *iommu_unit = &iommu->iommu_units[i];
 		for (j = 0; j < iommu_unit->dev_count; j++) {
+
+			/*
+			 * For IOMMU V1 do not halt IOMMU on pagefault if
+			 * FT pagefault policy is set accordingly
+			 */
+			if ((!msm_soc_version_supports_iommu_v0()) &&
+				(!(adreno_dev->ft_pf_policy &
+				   KGSL_FT_PAGEFAULT_GPUHALT_ENABLE))) {
+				sctlr_val = KGSL_IOMMU_GET_CTX_REG(iommu,
+						iommu_unit,
+						iommu_unit->dev[j].ctx_id,
+						SCTLR);
+				sctlr_val |= (0x1 <<
+						KGSL_IOMMU_SCTLR_HUPCF_SHIFT);
+				KGSL_IOMMU_SET_CTX_REG(iommu,
+						iommu_unit,
+						iommu_unit->dev[j].ctx_id,
+						SCTLR, sctlr_val);
+			}
 			if (sizeof(phys_addr_t) > sizeof(unsigned long)) {
 				iommu_unit->dev[j].default_ttbr0 =
 						KGSL_IOMMU_GET_CTX_REG_LL(iommu,
@@ -1640,7 +1699,7 @@ static int kgsl_iommu_start(struct kgsl_mmu *mmu)
 		}
 	}
 	kgsl_iommu_lock_rb_in_tlb(mmu);
-	_iommu_unlock();
+	_iommu_unlock(iommu);
 
 	/* For complete CFF */
 	kgsl_cffdump_setmem(mmu->device, mmu->setstate_memory.gpuaddr +
@@ -1739,24 +1798,28 @@ void kgsl_iommu_pagefault_resume(struct kgsl_mmu *mmu)
 	struct kgsl_iommu *iommu = mmu->priv;
 	int i, j;
 
-	if (mmu->fault) {
+	if (atomic_read(&mmu->fault)) {
 		for (i = 0; i < iommu->unit_count; i++) {
 			struct kgsl_iommu_unit *iommu_unit =
 						&iommu->iommu_units[i];
 			for (j = 0; j < iommu_unit->dev_count; j++) {
 				if (iommu_unit->dev[j].fault) {
 					kgsl_iommu_enable_clk(mmu, j);
-					_iommu_lock();
+					_iommu_lock(iommu);
 					KGSL_IOMMU_SET_CTX_REG(iommu,
 						iommu_unit,
 						iommu_unit->dev[j].ctx_id,
 						RESUME, 1);
-					_iommu_unlock();
+					KGSL_IOMMU_SET_CTX_REG(iommu,
+						iommu_unit,
+						iommu_unit->dev[j].ctx_id,
+						FSR, 0);
+					_iommu_unlock(iommu);
 					iommu_unit->dev[j].fault = 0;
 				}
 			}
 		}
-		mmu->fault = 0;
+		atomic_set(&mmu->fault, 0);
 	}
 }
 
@@ -1856,25 +1919,34 @@ static void kgsl_iommu_default_setstate(struct kgsl_mmu *mmu,
 	struct kgsl_iommu *iommu = mmu->priv;
 	int temp;
 	int i;
+	int ret = 0;
 	phys_addr_t pt_base = kgsl_iommu_get_pt_base_addr(mmu,
 						mmu->hwpagetable);
 	phys_addr_t pt_val;
 
-	if (kgsl_iommu_enable_clk(mmu, KGSL_IOMMU_CONTEXT_USER)) {
+	ret = kgsl_iommu_enable_clk(mmu, KGSL_IOMMU_CONTEXT_USER);
+
+	if (ret) {
 		KGSL_DRV_ERR(mmu->device, "Failed to enable iommu clocks\n");
-		return;
+		return ret;
 	}
 
 	/* For v0 SMMU GPU needs to be idle for tlb invalidate as well */
-	if (msm_soc_version_supports_iommu_v0())
-		kgsl_idle(mmu->device);
+	if (msm_soc_version_supports_iommu_v0()) {
+		ret = kgsl_idle(mmu->device);
+		if (ret)
+			return ret;
+	}
 
 	/* Acquire GPU-CPU sync Lock here */
-	_iommu_lock();
+	_iommu_lock(iommu);
 
 	if (flags & KGSL_MMUFLAGS_PTUPDATE) {
-		if (!msm_soc_version_supports_iommu_v0())
-			kgsl_idle(mmu->device);
+		if (!msm_soc_version_supports_iommu_v0()) {
+			ret = kgsl_idle(mmu->device);
+			if (ret)
+				goto unlock;
+		}
 		for (i = 0; i < iommu->unit_count; i++) {
 			/* get the lsb value which should not change when
 			 * changing ttbr0 */
@@ -1935,12 +2007,14 @@ static void kgsl_iommu_default_setstate(struct kgsl_mmu *mmu,
 			}
 		}
 	}
+unlock:
 
 	/* Release GPU-CPU sync Lock here */
-	_iommu_unlock();
+	_iommu_unlock(iommu);
 
 	/* Disable smmu clock */
 	kgsl_iommu_disable_clk_on_ts(mmu, 0, false);
+	return ret;
 }
 
 /*

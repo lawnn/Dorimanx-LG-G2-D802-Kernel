@@ -1817,11 +1817,6 @@ static int adreno_start(struct kgsl_device *device)
 	if (status)
 		goto error_irq_off;
 
-	/* While fault tolerance is on we do not want timer to
-	 * fire and attempt to change any device state */
-	if (KGSL_STATE_DUMP_AND_FT != device->state)
-		mod_timer(&device->idle_timer, jiffies + FIRST_TIMEOUT);
-
 	mod_timer(&device->hang_timer,
 		(jiffies + msecs_to_jiffies(KGSL_TIMEOUT_PART)));
 
@@ -2355,18 +2350,18 @@ _adreno_debug_ft_info(struct kgsl_device *device,
 		/* Print fault tolerance data here */
 		KGSL_FT_INFO(device, "Temp RB buffer size 0x%X\n",
 			ft_data->rb_size);
-		adreno_dump_rb(device, ft_data->rb_buffer,
-			ft_data->rb_size<<2, 0, ft_data->rb_size);
+		//adreno_dump_rb(device, ft_data->rb_buffer,
+		//	ft_data->rb_size<<2, 0, ft_data->rb_size);
 
 		KGSL_FT_INFO(device, "Bad RB buffer size 0x%X\n",
 			ft_data->bad_rb_size);
-		adreno_dump_rb(device, ft_data->bad_rb_buffer,
-			ft_data->bad_rb_size<<2, 0, ft_data->bad_rb_size);
+		//adreno_dump_rb(device, ft_data->bad_rb_buffer,
+		//	ft_data->bad_rb_size<<2, 0, ft_data->bad_rb_size);
 
 		KGSL_FT_INFO(device, "Good RB buffer size 0x%X\n",
 			ft_data->good_rb_size);
-		adreno_dump_rb(device, ft_data->good_rb_buffer,
-			ft_data->good_rb_size<<2, 0, ft_data->good_rb_size);
+		//adreno_dump_rb(device, ft_data->good_rb_buffer,
+		//	ft_data->good_rb_size<<2, 0, ft_data->good_rb_size);
 
 	}
 }
@@ -2725,6 +2720,12 @@ adreno_dump_and_exec_ft(struct kgsl_device *device)
 		if (device->state != KGSL_STATE_HUNG)
 			result = 0;
 	} else {
+		/*
+		 * While fault tolerance is happening we do not want the
+		 * idle_timer to fire and attempt to change any device state
+		 */
+		del_timer_sync(&device->idle_timer);
+
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_DUMP_AND_FT);
 		INIT_COMPLETION(device->ft_gate);
 		/* Detected a hang */
@@ -2772,7 +2773,6 @@ adreno_dump_and_exec_ft(struct kgsl_device *device)
 			kgsl_pwrctrl_set_state(device, KGSL_STATE_HUNG);
 		} else {
 			kgsl_pwrctrl_set_state(device, KGSL_STATE_ACTIVE);
-			mod_timer(&device->idle_timer, jiffies + FIRST_TIMEOUT);
 			mod_timer(&device->hang_timer,
 				(jiffies +
 				msecs_to_jiffies(KGSL_TIMEOUT_PART)));
@@ -3909,7 +3909,7 @@ static const struct kgsl_functable adreno_functable = {
 	.drawctxt_detach = adreno_drawctxt_detach,
 	.drawctxt_destroy = adreno_drawctxt_destroy,
 	.setproperty = adreno_setproperty,
-	.postmortem_dump = adreno_dump,
+	//.postmortem_dump = adreno_dump,
 	.next_event = adreno_next_event,
 };
 

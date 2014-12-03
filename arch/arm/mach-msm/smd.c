@@ -176,8 +176,6 @@ static struct interrupt_config private_intr_config[NUM_SMD_SUBSYSTEMS] = {
 	},
 };
 
-static void *smd_dev;
-
 struct interrupt_stat interrupt_stats[NUM_SMD_SUBSYSTEMS];
 
 #define SMSM_STATE_ADDR(entry)           (smsm_info.state + entry)
@@ -381,14 +379,6 @@ static DECLARE_WORK(smsm_cb_work, notify_smsm_cb_clients_worker);
 static DEFINE_MUTEX(smsm_lock);
 static struct smsm_state_info *smsm_states;
 
-/**
- * Variables to indicate smd module initialization.
- * Dependents to register for smd module init notifier.
- */
-static int smd_module_inited;
-static RAW_NOTIFIER_HEAD(smd_module_init_notifier_list);
-static DEFINE_MUTEX(smd_module_init_notifier_lock);
-static void smd_module_init_notify(uint32_t state, void *data);
 static int smd_stream_write_avail(struct smd_channel *ch);
 static int smd_stream_read_avail(struct smd_channel *ch);
 
@@ -708,6 +698,7 @@ struct edge_to_pid {
 	uint32_t	local_pid;
 	uint32_t	remote_pid;
 	char		subsys_name[SMD_MAX_CH_NAME_LEN];
+	bool		initialized;
 };
 
 /**
@@ -753,39 +744,54 @@ static LIST_HEAD(smd_ch_list_dsps);
 static LIST_HEAD(smd_ch_list_wcnss);
 static LIST_HEAD(smd_ch_list_rpm);
 
-static unsigned char smd_ch_allocated[64];
+/* 2 total supported tables of channels */
+static unsigned char smd_ch_allocated[SMEM_NUM_SMD_STREAM_CHANNELS * 2];
 static struct work_struct probe_work;
 
 static void finalize_channel_close_fn(struct work_struct *work);
 static DECLARE_WORK(finalize_channel_close_work, finalize_channel_close_fn);
 static struct workqueue_struct *channel_close_wq;
 
-static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm);
+#define PRI_ALLOC_TBL 1
+#define SEC_ALLOC_TBL 2
+static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm, int table_id);
+
+static bool smd_edge_inited(int edge)
+{
+	return edge_to_pids[edge].initialized;
+}
 
 /* on smp systems, the probe might get called from multiple cores,
    hence use a lock */
 static DEFINE_MUTEX(smd_probe_lock);
 
-static void smd_channel_probe_worker(struct work_struct *work)
+/**
+ * scan_alloc_table - Scans a specified SMD channel allocation table in SMEM for
+ *			newly created channels that need to be made locally
+ *			visable
+ *
+ * @shared: pointer to the table array in SMEM
+ * @smd_ch_allocated: pointer to an array indicating already allocated channels
+ * table_id: identifier for this channel allocation table
+ *
+ * The smd_probe_lock must be locked by the calling function.  Shared and
+ * smd_ch_allocated are assumed to be valid pointers.
+ */
+static void scan_alloc_table(struct smd_alloc_elm *shared,
+				char *smd_ch_allocated,
+				int table_id)
 {
-	struct smd_alloc_elm *shared;
 	unsigned n;
 	uint32_t type;
 
-	shared = smem_find(ID_CH_ALLOC_TBL, sizeof(*shared) * 64);
-
-	if (!shared) {
-		pr_err("%s: allocation table not initialized\n", __func__);
-		return;
-	}
-
-	mutex_lock(&smd_probe_lock);
-	for (n = 0; n < 64; n++) {
+	for (n = 0; n < SMEM_NUM_SMD_STREAM_CHANNELS; n++) {
 		if (smd_ch_allocated[n])
 			continue;
 
-		/* channel should be allocated only if APPS
-		   processor is involved */
+		/*
+		 * channel should be allocated only if APPS processor is
+		 * involved
+		 */
 		type = SMD_CHANNEL_TYPE(shared[n].type);
 		if (type >= ARRAY_SIZE(edge_to_pids) ||
 				edge_to_pids[type].local_pid != SMD_APPS)
@@ -795,11 +801,53 @@ static void smd_channel_probe_worker(struct work_struct *work)
 		if (!shared[n].name[0])
 			continue;
 
-		if (!smd_alloc_channel(&shared[n]))
+		if (!smd_initialized && !smd_edge_inited(type)) {
+			SMD_INFO(
+				"Probe skipping tbl %d, ch %d, edge not inited\n",
+				table_id, n);
+			continue;
+		}
+
+		if (!smd_alloc_channel(&shared[n], table_id))
 			smd_ch_allocated[n] = 1;
 		else
-			SMD_INFO("Probe skipping ch %d, not allocated\n", n);
+			SMD_INFO(
+				"Probe skipping tbl %d, ch %d, not allocated\n",
+				table_id, n);
 	}
+}
+
+/**
+ * smd_channel_probe_worker() - Scan for newly created SMD channels and init
+ *				local structures so the channels are visable to
+ *				local clients
+ *
+ * @work: work_struct corresponding to an instance of this function running on
+ *		a workqueue.
+ */
+static void smd_channel_probe_worker(struct work_struct *work)
+{
+	struct smd_alloc_elm *shared;
+
+	shared = smem_find(ID_CH_ALLOC_TBL,
+				sizeof(*shared) * SMEM_NUM_SMD_STREAM_CHANNELS);
+
+	if (!shared) {
+		pr_err("%s: allocation table not initialized\n", __func__);
+		return;
+	}
+
+	mutex_lock(&smd_probe_lock);
+
+	scan_alloc_table(shared, smd_ch_allocated, PRI_ALLOC_TBL);
+
+	shared = smem_find(SMEM_CHANNEL_ALLOC_TBL_2,
+			sizeof(*shared) * SMEM_NUM_SMD_STREAM_CHANNELS);
+	if (shared)
+		scan_alloc_table(shared,
+			&(smd_ch_allocated[SMEM_NUM_SMD_STREAM_CHANNELS]),
+			SEC_ALLOC_TBL);
+
 	mutex_unlock(&smd_probe_lock);
 }
 
@@ -1665,15 +1713,41 @@ static int smd_packet_read_from_cb(smd_channel_t *ch, void *data, int len,
 }
 
 #if (defined(CONFIG_MSM_SMD_PKG4) || defined(CONFIG_MSM_SMD_PKG3))
-static int smd_alloc_v2(struct smd_channel *ch)
+/**
+ * smd_alloc_v2() - Init local channel structure with information stored in SMEM
+ *
+ * @ch: pointer to the local structure for this channel
+ * @table_id: the id of the table this channel resides in. 1 = first table, 2 =
+ *		second table, etc
+ * @returns: -EINVAL for failure; 0 for success
+ *
+ * ch must point to an allocated instance of struct smd_channel that is zeroed
+ * out, and has the n and type members already initialized to the correct values
+ */
+static int smd_alloc_v2(struct smd_channel *ch, int table_id)
 {
 	void *buffer;
 	unsigned buffer_sz;
+	unsigned base_id;
+	unsigned fifo_id;
+
+	switch (table_id) {
+	case PRI_ALLOC_TBL:
+		base_id = SMEM_SMD_BASE_ID;
+		fifo_id = SMEM_SMD_FIFO_BASE_ID;
+		break;
+	case SEC_ALLOC_TBL:
+		base_id = SMEM_SMD_BASE_ID_2;
+		fifo_id = SMEM_SMD_FIFO_BASE_ID_2;
+		break;
+	default:
+		SMD_INFO("Invalid table_id:%d passed to smd_alloc\n", table_id);
+		return -EINVAL;
+	}
 
 	if (is_word_access_ch(ch->type)) {
 		struct smd_shared_v2_word_access *shared2;
-		shared2 = smem_alloc(SMEM_SMD_BASE_ID + ch->n,
-						sizeof(*shared2));
+		shared2 = smem_alloc(base_id + ch->n, sizeof(*shared2));
 		if (!shared2) {
 			SMD_INFO("smem_alloc failed ch=%d\n", ch->n);
 			return -EINVAL;
@@ -1682,8 +1756,7 @@ static int smd_alloc_v2(struct smd_channel *ch)
 		ch->recv = &shared2->ch1;
 	} else {
 		struct smd_shared_v2 *shared2;
-		shared2 = smem_alloc(SMEM_SMD_BASE_ID + ch->n,
-							sizeof(*shared2));
+		shared2 = smem_alloc(base_id + ch->n, sizeof(*shared2));
 		if (!shared2) {
 			SMD_INFO("smem_alloc failed ch=%d\n", ch->n);
 			return -EINVAL;
@@ -1693,7 +1766,7 @@ static int smd_alloc_v2(struct smd_channel *ch)
 	}
 	ch->half_ch = get_half_ch_funcs(ch->type);
 
-	buffer = smem_get_entry(SMEM_SMD_FIFO_BASE_ID + ch->n, &buffer_sz);
+	buffer = smem_get_entry(fifo_id + ch->n, &buffer_sz);
 	if (!buffer) {
 		SMD_INFO("smem_get_entry failed\n");
 		return -EINVAL;
@@ -1718,7 +1791,7 @@ static int smd_alloc_v1(struct smd_channel *ch)
 }
 
 #else /* define v1 for older targets */
-static int smd_alloc_v2(struct smd_channel *ch)
+static int smd_alloc_v2(struct smd_channel *ch, int table_id)
 {
 	return -EINVAL;
 }
@@ -1742,7 +1815,16 @@ static int smd_alloc_v1(struct smd_channel *ch)
 
 #endif
 
-static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm)
+/**
+ * smd_alloc_channel() - Create and init local structures for a newly allocated
+ *			SMD channel
+ *
+ * @alloc_elm: the allocation element stored in SMEM for this channel
+ * @table_id: the id of the table this channel resides in. 1 = first table, 2 =
+ *		seconds table, etc
+ * @returns: -1 for failure; 0 for success
+ */
+static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm, int table_id)
 {
 	struct smd_channel *ch;
 
@@ -1754,7 +1836,7 @@ static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm)
 	ch->n = alloc_elm->cid;
 	ch->type = SMD_CHANNEL_TYPE(alloc_elm->type);
 
-	if (smd_alloc_v2(ch) && smd_alloc_v1(ch)) {
+	if (smd_alloc_v2(ch, table_id) && smd_alloc_v1(ch)) {
 		kfree(ch);
 		return -1;
 	}
@@ -1919,7 +2001,7 @@ int smd_named_open_on_edge(const char *name, uint32_t edge,
 	struct smd_channel *ch;
 	unsigned long flags;
 
-	if (smd_initialized == 0) {
+	if (smd_initialized == 0 && !smd_edge_inited(edge)) {
 		SMD_INFO("smd_open() before smd_init()\n");
 		return -ENODEV;
 	}
@@ -2442,16 +2524,23 @@ static int smsm_init(void)
 	struct smsm_size_info_type *smsm_size_info;
 	unsigned long flags;
 	unsigned long j_start;
+	static int first = 1;
+	remote_spinlock_t *remote_spinlock;
+
+	if (!first)
+		return 0;
+	first = 0;
 
 	/* Verify that remote spinlock is not deadlocked */
+	remote_spinlock = smem_get_remote_spinlock();
 	j_start = jiffies;
-	while (!remote_spin_trylock_irqsave(&remote_spinlock, flags)) {
+	while (!remote_spin_trylock_irqsave(remote_spinlock, flags)) {
 		if (jiffies_to_msecs(jiffies - j_start) > RSPIN_INIT_WAIT_MS) {
 			panic("%s: Remote processor %d will not release spinlock\n",
-				__func__, remote_spin_owner(&remote_spinlock));
+				__func__, remote_spin_owner(remote_spinlock));
 		}
 	}
-	remote_spin_unlock_irqrestore(&remote_spinlock, flags);
+	remote_spin_unlock_irqrestore(remote_spinlock, flags);
 
 	smsm_size_info = smem_alloc(SMEM_SMSM_SIZE_INFO,
 				sizeof(struct smsm_size_info_type));
@@ -2866,9 +2955,6 @@ void notify_smsm_cb_clients_worker(struct work_struct *work)
 	int ret;
 	unsigned long flags;
 
-	if (!smd_initialized)
-		return;
-
 	while (kfifo_len(&smsm_snapshot_fifo) >= SMSM_SNAPSHOT_SIZE) {
 		mutex_lock(&smsm_lock);
 		for (n = 0; n < SMSM_NUM_ENTRIES; n++) {
@@ -3090,42 +3176,6 @@ int smsm_state_cb_deregister(uint32_t smsm_entry, uint32_t mask,
 }
 EXPORT_SYMBOL(smsm_state_cb_deregister);
 
-int smd_module_init_notifier_register(struct notifier_block *nb)
-{
-	int ret;
-	if (!nb)
-		return -EINVAL;
-	mutex_lock(&smd_module_init_notifier_lock);
-	ret = raw_notifier_chain_register(&smd_module_init_notifier_list, nb);
-	if (smd_module_inited)
-		nb->notifier_call(nb, 0, NULL);
-	mutex_unlock(&smd_module_init_notifier_lock);
-	return ret;
-}
-EXPORT_SYMBOL(smd_module_init_notifier_register);
-
-int smd_module_init_notifier_unregister(struct notifier_block *nb)
-{
-	int ret;
-	if (!nb)
-		return -EINVAL;
-	mutex_lock(&smd_module_init_notifier_lock);
-	ret = raw_notifier_chain_unregister(&smd_module_init_notifier_list,
-					    nb);
-	mutex_unlock(&smd_module_init_notifier_lock);
-	return ret;
-}
-EXPORT_SYMBOL(smd_module_init_notifier_unregister);
-
-static void smd_module_init_notify(uint32_t state, void *data)
-{
-	mutex_lock(&smd_module_init_notifier_lock);
-	smd_module_inited = 1;
-	raw_notifier_call_chain(&smd_module_init_notifier_list,
-				state, data);
-	mutex_unlock(&smd_module_init_notifier_lock);
-}
-
 int smd_core_init(void)
 {
 	int r;
@@ -3321,9 +3371,6 @@ int smd_core_platform_init(struct platform_device *pdev)
 	struct smd_subsystem_config *smd_ss_config_list;
 	struct smd_subsystem_config *cfg;
 	int err_ret = 0;
-	struct smd_smem_regions *smd_smem_areas;
-	struct smem_area *smem_areas_tmp = NULL;
-	int smem_idx;
 
 	smd_platform_data = pdev->dev.platform_data;
 	num_ss = smd_platform_data->num_ss_configs;
@@ -3332,57 +3379,6 @@ int smd_core_platform_init(struct platform_device *pdev)
 	if (smd_platform_data->smd_ssr_config)
 		disable_smsm_reset_handshake = smd_platform_data->
 			   smd_ssr_config->disable_smsm_reset_handshake;
-
-	smd_smem_areas = smd_platform_data->smd_smem_areas;
-	num_smem_areas = smd_platform_data->num_smem_areas + 1;
-
-	/* Initialize main SMEM region */
-	smem_areas_tmp = kmalloc_array(num_smem_areas, sizeof(struct smem_area),
-				GFP_KERNEL);
-	if (!smem_areas_tmp) {
-		pr_err("%s: smem_areas kmalloc failed\n", __func__);
-		err_ret = -ENOMEM;
-		goto smem_areas_alloc_fail;
-	}
-
-	smem_areas_tmp[0].phys_addr =  msm_shared_ram_phys;
-	smem_areas_tmp[0].size = MSM_SHARED_RAM_SIZE;
-	smem_areas_tmp[0].virt_addr = MSM_SHARED_RAM_BASE;
-
-	/* Configure auxiliary SMEM regions */
-	for (smem_idx = 1; smem_idx < num_smem_areas; ++smem_idx) {
-		smem_areas_tmp[smem_idx].phys_addr =
-				smd_smem_areas[smem_idx].phys_addr;
-		smem_areas_tmp[smem_idx].size =
-				smd_smem_areas[smem_idx].size;
-		smem_areas_tmp[smem_idx].virt_addr = ioremap_nocache(
-			(unsigned long)(smem_areas_tmp[smem_idx].phys_addr),
-			smem_areas_tmp[smem_idx].size);
-		if (!smem_areas_tmp[smem_idx].virt_addr) {
-			pr_err("%s: ioremap_nocache() of addr: %pa size: %pa\n",
-				__func__,
-				&smem_areas_tmp[smem_idx].phys_addr,
-				&smem_areas_tmp[smem_idx].size);
-			err_ret = -ENOMEM;
-			goto smem_failed;
-		}
-
-		if (OVERFLOW_ADD_UNSIGNED(uintptr_t,
-				(uintptr_t)smem_areas_tmp[smem_idx].virt_addr,
-				smem_areas_tmp[smem_idx].size)) {
-			pr_err("%s: invalid virtual address block %i: %p:%pa\n",
-					__func__, smem_idx,
-					smem_areas_tmp[smem_idx].virt_addr,
-					&smem_areas_tmp[smem_idx].size);
-			++smem_idx;
-			err_ret = -EINVAL;
-			goto smem_failed;
-		}
-
-		SMD_DBG("%s: %d = %pa %pa", __func__, smem_idx,
-				&smd_smem_areas[smem_idx].phys_addr,
-				&smd_smem_areas[smem_idx].size);
-	}
 
 	for (i = 0; i < num_ss; i++) {
 		cfg = &smd_ss_config_list[i];
@@ -3427,7 +3423,6 @@ int smd_core_platform_init(struct platform_device *pdev)
 
 	SMD_INFO("smd_core_platform_init() done\n");
 
-	smem_areas = smem_areas_tmp;
 	return 0;
 
 intr_failed:
@@ -3444,19 +3439,105 @@ intr_failed:
 				(void *)cfg->smsm_int.dev_id
 				);
 	}
-smem_failed:
-	for (smem_idx = smem_idx - 1; smem_idx >= 1; --smem_idx)
-		iounmap(smem_areas_tmp[smem_idx].virt_addr);
-
-	num_smem_areas = 0;
-	kfree(smem_areas_tmp);
-
-smem_areas_alloc_fail:
 	return err_ret;
 }
 
-static int __devinit parse_smd_devicetree(struct device_node *node,
-						void *irq_out_base)
+static int msm_smsm_probe(struct platform_device *pdev)
+{
+	uint32_t edge;
+	char *key;
+	int ret;
+	uint32_t irq_offset;
+	uint32_t irq_bitmask;
+	uint32_t irq_line;
+	struct interrupt_config_item *private_irq;
+	struct device_node *node;
+	void *irq_out_base;
+	resource_size_t irq_out_size;
+	struct platform_device *parent_pdev;
+	struct resource *r;
+
+	disable_smsm_reset_handshake = 1;
+
+	node = pdev->dev.of_node;
+
+	if (!pdev->dev.parent) {
+		pr_err("%s: missing link to parent device\n", __func__);
+		return -ENODEV;
+	}
+
+	parent_pdev = to_platform_device(pdev->dev.parent);
+
+	key = "irq-reg-base";
+	/* existance check verified in smem driver */
+	r = platform_get_resource_byname(parent_pdev, IORESOURCE_MEM, key);
+	irq_out_size = resource_size(r);
+	irq_out_base = ioremap_nocache(r->start, irq_out_size);
+	if (!irq_out_base) {
+		pr_err("%s: ioremap_nocache() of irq_out_base addr:%pr size:%pr\n",
+				__func__, &r->start, &irq_out_size);
+		return -ENOMEM;
+	}
+	SMSM_DBG("%s: %s = %p", __func__, key, irq_out_base);
+
+	key = "qcom,smsm-edge";
+	ret = of_property_read_u32(node, key, &edge);
+	if (ret)
+		goto missing_key;
+	SMSM_DBG("%s: %s = %d", __func__, key, edge);
+
+	key = "qcom,smsm-irq-offset";
+	ret = of_property_read_u32(node, key, &irq_offset);
+	if (ret)
+		goto missing_key;
+	SMSM_DBG("%s: %s = %x", __func__, key, irq_offset);
+
+	key = "qcom,smsm-irq-bitmask";
+	ret = of_property_read_u32(node, key, &irq_bitmask);
+	if (ret)
+		goto missing_key;
+	SMSM_DBG("%s: %s = %x", __func__, key, irq_bitmask);
+
+	key = "interrupts";
+	irq_line = irq_of_parse_and_map(node, 0);
+	if (!irq_line)
+		goto missing_key;
+	SMSM_DBG("%s: %s = %d", __func__, key, irq_line);
+
+	private_irq = &private_intr_config[edge_to_pids[edge].remote_pid].smsm;
+	private_irq->out_bit_pos = irq_bitmask;
+	private_irq->out_offset = irq_offset;
+	private_irq->out_base = irq_out_base;
+	private_irq->irq_id = irq_line;
+
+	ret = request_irq(irq_line,
+				private_irq->irq_handler,
+				IRQF_TRIGGER_RISING,
+				"smsm_dev",
+				NULL);
+	if (ret < 0) {
+		pr_err("%s: request_irq() failed on %d\n", __func__, irq_line);
+		return ret;
+	} else {
+		ret = enable_irq_wake(irq_line);
+		if (ret < 0)
+			pr_err("%s: enable_irq_wake() failed on %d\n", __func__,
+					irq_line);
+	}
+
+	if (smsm_init())
+		pr_err("smsm_init() failed\n");
+
+	smsm_irq_handler(0, 0);
+
+	return 0;
+
+missing_key:
+	pr_err("%s: missing key: %s", __func__, key);
+	return -ENODEV;
+}
+
+static int msm_smd_probe(struct platform_device *pdev)
 {
 	uint32_t edge;
 	char *key;
@@ -3467,6 +3548,32 @@ static int __devinit parse_smd_devicetree(struct device_node *node,
 	unsigned long irq_flags = IRQF_TRIGGER_RISING;
 	const char *pilstr;
 	struct interrupt_config_item *private_irq;
+	struct device_node *node;
+	void *irq_out_base;
+	resource_size_t irq_out_size;
+	struct platform_device *parent_pdev;
+	struct resource *r;
+
+	node = pdev->dev.of_node;
+
+	if (!pdev->dev.parent) {
+		pr_err("%s: missing link to parent device\n", __func__);
+		return -ENODEV;
+	}
+
+	parent_pdev = to_platform_device(pdev->dev.parent);
+
+	key = "irq-reg-base";
+	/* existance check verified in smem driver */
+	r = platform_get_resource_byname(parent_pdev, IORESOURCE_MEM, key);
+	irq_out_size = resource_size(r);
+	irq_out_base = ioremap_nocache(r->start, irq_out_size);
+	if (!irq_out_base) {
+		pr_err("%s: ioremap_nocache() of irq_out_base addr:%pr size:%pr\n",
+				__func__, &r->start, &irq_out_size);
+		return -ENOMEM;
+	}
+	SMD_DBG("%s: %s = %p", __func__, key, irq_out_base);
 
 	key = "qcom,smd-edge";
 	ret = of_property_read_u32(node, key, &edge);
@@ -3527,68 +3634,9 @@ static int __devinit parse_smd_devicetree(struct device_node *node,
 		strlcpy(edge_to_pids[edge].subsys_name, pilstr,
 						SMD_MAX_CH_NAME_LEN);
 
-	return 0;
+	edge_to_pids[edge].initialized = true;
 
-missing_key:
-	pr_err("%s: missing key: %s", __func__, key);
-	return -ENODEV;
-}
-
-static int __devinit parse_smsm_devicetree(struct device_node *node,
-						void *irq_out_base)
-{
-	uint32_t edge;
-	char *key;
-	int ret;
-	uint32_t irq_offset;
-	uint32_t irq_bitmask;
-	uint32_t irq_line;
-	struct interrupt_config_item *private_irq;
-
-	key = "qcom,smsm-edge";
-	ret = of_property_read_u32(node, key, &edge);
-	if (ret)
-		goto missing_key;
-	SMD_DBG("%s: %s = %d", __func__, key, edge);
-
-	key = "qcom,smsm-irq-offset";
-	ret = of_property_read_u32(node, key, &irq_offset);
-	if (ret)
-		goto missing_key;
-	SMD_DBG("%s: %s = %x", __func__, key, irq_offset);
-
-	key = "qcom,smsm-irq-bitmask";
-	ret = of_property_read_u32(node, key, &irq_bitmask);
-	if (ret)
-		goto missing_key;
-	SMD_DBG("%s: %s = %x", __func__, key, irq_bitmask);
-
-	key = "interrupts";
-	irq_line = irq_of_parse_and_map(node, 0);
-	if (!irq_line)
-		goto missing_key;
-	SMD_DBG("%s: %s = %d", __func__, key, irq_line);
-
-	private_irq = &private_intr_config[edge_to_pids[edge].remote_pid].smsm;
-	private_irq->out_bit_pos = irq_bitmask;
-	private_irq->out_offset = irq_offset;
-	private_irq->out_base = irq_out_base;
-	private_irq->irq_id = irq_line;
-
-	ret = request_irq(irq_line,
-				private_irq->irq_handler,
-				IRQF_TRIGGER_RISING,
-				"smsm_dev",
-				NULL);
-	if (ret < 0) {
-		pr_err("%s: request_irq() failed on %d\n", __func__, irq_line);
-		return ret;
-	} else {
-		ret = enable_irq_wake(irq_line);
-		if (ret < 0)
-			pr_err("%s: enable_irq_wake() failed on %d\n", __func__,
-					irq_line);
-	}
+	schedule_work(&probe_work);
 
 	return 0;
 
@@ -3597,213 +3645,7 @@ missing_key:
 	return -ENODEV;
 }
 
-static void __devinit unparse_smd_devicetree(struct device_node *node)
-{
-	uint32_t irq_line;
-
-	irq_line = irq_of_parse_and_map(node, 0);
-
-	free_irq(irq_line, NULL);
-}
-
-static void __devinit unparse_smsm_devicetree(struct device_node *node)
-{
-	uint32_t irq_line;
-
-	irq_line = irq_of_parse_and_map(node, 0);
-
-	free_irq(irq_line, NULL);
-}
-
-static int __devinit smd_core_devicetree_init(struct platform_device *pdev)
-{
-	char *key;
-	struct resource *r;
-	void *irq_out_base;
-	phys_addr_t aux_mem_base;
-	resource_size_t aux_mem_size;
-	int temp_string_size = 11; /* max 3 digit count */
-	char temp_string[temp_string_size];
-	struct device_node *node;
-	int ret;
-	const char *compatible;
-	struct ramdump_segment *ramdump_segments_tmp = NULL;
-	struct smem_area *smem_areas_tmp = NULL;
-	int smem_idx = 0;
-	int subnode_num = 0;
-	int i;
-	resource_size_t irq_out_size;
-
-	disable_smsm_reset_handshake = 1;
-
-	key = "irq-reg-base";
-	r = platform_get_resource_byname(pdev, IORESOURCE_MEM, key);
-	if (!r) {
-		pr_err("%s: missing '%s'\n", __func__, key);
-		return -ENODEV;
-	}
-	irq_out_size = resource_size(r);
-	irq_out_base = ioremap_nocache(r->start, irq_out_size);
-	if (!irq_out_base) {
-		pr_err("%s: ioremap_nocache() of irq_out_base addr:%pr size:%pr\n",
-				__func__, &r->start, &irq_out_size);
-		return -ENOMEM;
-	}
-	SMD_DBG("%s: %s = %p", __func__, key, irq_out_base);
-
-	num_smem_areas = 1;
-	while (1) {
-		scnprintf(temp_string, temp_string_size, "aux-mem%d",
-				num_smem_areas);
-		r = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-								temp_string);
-		if (!r)
-			break;
-
-		++num_smem_areas;
-		if (num_smem_areas > 999) {
-			pr_err("%s: max num aux mem regions reached\n",
-								__func__);
-			break;
-		}
-	}
-
-	/* Initialize main SMEM region and SSR ramdump region */
-	key = "smem";
-	r = platform_get_resource_byname(pdev, IORESOURCE_MEM, key);
-	if (!r) {
-		pr_err("%s: missing '%s'\n", __func__, key);
-		return -ENODEV;
-	}
-
-	smem_areas_tmp = kmalloc_array(num_smem_areas, sizeof(struct smem_area),
-				GFP_KERNEL);
-	if (!smem_areas_tmp) {
-		pr_err("%s: smem areas kmalloc failed\n", __func__);
-		ret = -ENOMEM;
-		goto free_smem_areas;
-	}
-
-	ramdump_segments_tmp = kmalloc_array(num_smem_areas,
-			sizeof(struct ramdump_segment), GFP_KERNEL);
-	if (!ramdump_segments_tmp) {
-		pr_err("%s: ramdump segment kmalloc failed\n", __func__);
-		ret = -ENOMEM;
-		goto free_smem_areas;
-	}
-
-	smem_areas_tmp[smem_idx].phys_addr =  r->start;
-	smem_areas_tmp[smem_idx].size = resource_size(r);
-	smem_areas_tmp[smem_idx].virt_addr = MSM_SHARED_RAM_BASE;
-
-	ramdump_segments_tmp[smem_idx].address = r->start;
-	ramdump_segments_tmp[smem_idx].size = resource_size(r);
-	++smem_idx;
-
-	/* Configure auxiliary SMEM regions */
-	while (1) {
-		scnprintf(temp_string, temp_string_size, "aux-mem%d",
-								smem_idx);
-		r = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-							temp_string);
-		if (!r)
-			break;
-		aux_mem_base = r->start;
-		aux_mem_size = resource_size(r);
-
-		ramdump_segments_tmp[smem_idx].address = aux_mem_base;
-		ramdump_segments_tmp[smem_idx].size = aux_mem_size;
-
-		smem_areas_tmp[smem_idx].phys_addr = aux_mem_base;
-		smem_areas_tmp[smem_idx].size = aux_mem_size;
-		smem_areas_tmp[smem_idx].virt_addr = ioremap_nocache(
-			(unsigned long)(smem_areas_tmp[smem_idx].phys_addr),
-			smem_areas_tmp[smem_idx].size);
-		SMD_DBG("%s: %s = %pa %pa -> %p", __func__, temp_string,
-				&aux_mem_base, &aux_mem_size,
-				smem_areas_tmp[smem_idx].virt_addr);
-
-		if (!smem_areas_tmp[smem_idx].virt_addr) {
-			pr_err("%s: ioremap_nocache() of addr:%pa size: %pa\n",
-				__func__,
-				&smem_areas_tmp[smem_idx].phys_addr,
-				&smem_areas_tmp[smem_idx].size);
-			ret = -ENOMEM;
-			goto free_smem_areas;
-		}
-
-		if (OVERFLOW_ADD_UNSIGNED(uintptr_t,
-				(uintptr_t)smem_areas_tmp[smem_idx].virt_addr,
-				smem_areas_tmp[smem_idx].size)) {
-			pr_err("%s: invalid virtual address block %i: %p:%pa\n",
-					__func__, smem_idx,
-					smem_areas_tmp[smem_idx].virt_addr,
-					&smem_areas_tmp[smem_idx].size);
-			++smem_idx;
-			ret = -EINVAL;
-			goto free_smem_areas;
-		}
-
-		++smem_idx;
-		if (smem_idx > 999) {
-			pr_err("%s: max num aux mem regions reached\n",
-							__func__);
-			break;
-		}
-	}
-
-	for_each_child_of_node(pdev->dev.of_node, node) {
-		compatible = of_get_property(node, "compatible", NULL);
-		if (!compatible) {
-			pr_err("%s: invalid child node: compatible null\n",
-				__func__);
-			ret = -ENODEV;
-			goto rollback_subnodes;
-		}
-		if (!strcmp(compatible, "qcom,smd")) {
-			ret = parse_smd_devicetree(node, irq_out_base);
-			if (ret)
-				goto rollback_subnodes;
-		} else if (!strcmp(compatible, "qcom,smsm")) {
-			ret = parse_smsm_devicetree(node, irq_out_base);
-			if (ret)
-				goto rollback_subnodes;
-		} else {
-			pr_err("%s: invalid child node named: %s\n", __func__,
-							compatible);
-			ret = -ENODEV;
-			goto rollback_subnodes;
-		}
-		++subnode_num;
-	}
-
-	smem_areas = smem_areas_tmp;
-	smem_ramdump_segments = ramdump_segments_tmp;
-	return 0;
-
-rollback_subnodes:
-	i = 0;
-	for_each_child_of_node(pdev->dev.of_node, node) {
-		if (i >= subnode_num)
-			break;
-		++i;
-		compatible = of_get_property(node, "compatible", NULL);
-		if (!strcmp(compatible, "qcom,smd"))
-			unparse_smd_devicetree(node);
-		else
-			unparse_smsm_devicetree(node);
-	}
-free_smem_areas:
-	for (smem_idx = smem_idx - 1; smem_idx >= 1; --smem_idx)
-		iounmap(smem_areas_tmp[smem_idx].virt_addr);
-
-	num_smem_areas = 0;
-	kfree(ramdump_segments_tmp);
-	kfree(smem_areas_tmp);
-	return ret;
-}
-
-static int __devinit msm_smd_probe(struct platform_device *pdev)
+static int msm_smd_probe_legacy(struct platform_device *pdev)
 {
 	int ret;
 
@@ -3811,13 +3653,6 @@ static int __devinit msm_smd_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	SMD_INFO("smd probe\n");
-	INIT_WORK(&probe_work, smd_channel_probe_worker);
-
-	channel_close_wq = create_singlethread_workqueue("smd_channel_close");
-	if (IS_ERR(channel_close_wq)) {
-		pr_err("%s: create_singlethread_workqueue ENOMEM\n", __func__);
-		return -ENOMEM;
-	}
 
 	if (smsm_init()) {
 		pr_err("smsm_init() failed\n");
@@ -3826,13 +3661,8 @@ static int __devinit msm_smd_probe(struct platform_device *pdev)
 
 	if (pdev) {
 		if (pdev->dev.of_node) {
-			ret = smd_core_devicetree_init(pdev);
-			if (ret) {
-				pr_err("%s: device tree init failed\n",
-								__func__);
-				return ret;
-			}
-			smd_dev = &pdev->dev;
+			pr_err("%s: invalid device tree init\n", __func__);
+			return -ENODEV;
 		} else if (pdev->dev.platform_data) {
 			ret = smd_core_platform_init(pdev);
 			if (ret) {
@@ -3878,6 +3708,8 @@ static int restart_notifier_cb(struct notifier_block *this,
 				  unsigned long code,
 				  void *data)
 {
+	remote_spinlock_t *remote_spinlock;
+
 	/*
 	 * Some SMD or SMSM clients assume SMD/SMSM SSR handling will be
 	 * done in the AFTER_SHUTDOWN level.  If this ever changes, extra
@@ -3892,7 +3724,8 @@ static int restart_notifier_cb(struct notifier_block *this,
 				__func__, notifier->processor,
 				notifier->name);
 
-		remote_spin_release(&remote_spinlock, notifier->processor);
+		remote_spinlock = smem_get_remote_spinlock();
+		remote_spin_release(remote_spinlock, notifier->processor);
 		remote_spin_release_all(notifier->processor);
 
 		smd_channel_reset(notifier->processor);
@@ -3918,17 +3751,39 @@ static __init int modem_restart_late_init(void)
 }
 late_initcall(modem_restart_late_init);
 
-static struct of_device_id msm_smem_match_table[] = {
-	{ .compatible = "qcom,smem" },
+static struct of_device_id msm_smd_match_table[] = {
+	{ .compatible = "qcom,smd" },
 	{},
 };
 
 static struct platform_driver msm_smd_driver = {
 	.probe = msm_smd_probe,
 	.driver = {
+		.name = "msm_smd_dt",
+		.owner = THIS_MODULE,
+		.of_match_table = msm_smd_match_table,
+	},
+};
+
+static struct of_device_id msm_smsm_match_table[] = {
+	{ .compatible = "qcom,smsm" },
+	{},
+};
+
+static struct platform_driver msm_smsm_driver = {
+	.probe = msm_smsm_probe,
+	.driver = {
+		.name = "msm_smsm",
+		.owner = THIS_MODULE,
+		.of_match_table = msm_smsm_match_table,
+	},
+};
+
+static struct platform_driver msm_smd_driver_legacy = {
+	.probe = msm_smd_probe_legacy,
+	.driver = {
 		.name = MODULE_NAME,
 		.owner = THIS_MODULE,
-		.of_match_table = msm_smem_match_table,
 	},
 };
 
@@ -3947,9 +3802,19 @@ int __init msm_smd_init(void)
 	}
 
 	registered = true;
-	rc = init_smem_remote_spinlock();
+
+	INIT_WORK(&probe_work, smd_channel_probe_worker);
+
+	channel_close_wq = create_singlethread_workqueue("smd_channel_close");
+	if (IS_ERR(channel_close_wq)) {
+		pr_err("%s: create_singlethread_workqueue ENOMEM\n", __func__);
+		return -ENOMEM;
+	}
+
+	rc = platform_driver_register(&msm_smd_driver_legacy);
 	if (rc) {
-		pr_err("%s: remote spinlock init failed %d\n", __func__, rc);
+		pr_err("%s: msm_smd_driver_legacy register failed %d\n",
+			__func__, rc);
 		return rc;
 	}
 
@@ -3960,7 +3825,12 @@ int __init msm_smd_init(void)
 		return rc;
 	}
 
-	smd_module_init_notify(0, NULL);
+	rc = platform_driver_register(&msm_smsm_driver);
+	if (rc) {
+		pr_err("%s: msm_smsm_driver register failed %d\n",
+			__func__, rc);
+		return rc;
+	}
 
 	return 0;
 }

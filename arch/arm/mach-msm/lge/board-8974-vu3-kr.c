@@ -40,6 +40,7 @@
 #include <mach/rpm-smd.h>
 #include <mach/rpm-regulator-smd.h>
 #include <mach/socinfo.h>
+#include <mach/msm_smem.h>
 #include <mach/msm_bus_board.h>
 #include "../board-dt.h"
 #include "../clock.h"
@@ -124,9 +125,9 @@ int kcal_set_values(int kcal_r, int kcal_g, int kcal_b)
     //change RGB Limit Value
 		int isUpdate = 0;
 
-		int kcal_r_limit = 250;
-		int kcal_g_limit = 250;
-		int kcal_b_limit = 253;
+		int kcal_r_limit = 0;
+		int kcal_g_limit = 0;
+		int kcal_b_limit = 0;
 
 		g_kcal_r = kcal_r < kcal_r_limit ? kcal_r_limit : kcal_r;
 		g_kcal_g = kcal_g < kcal_g_limit ? kcal_g_limit : kcal_g;
@@ -195,6 +196,7 @@ extern void vu3ebv_init_input(void);
 
 void __init msm8974_add_drivers(void)
 {
+	msm_smem_init();
 	msm_init_modem_notifier_list();
 	msm_smd_init();
 	msm_rpm_driver_init();

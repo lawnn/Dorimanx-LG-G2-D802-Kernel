@@ -40,6 +40,7 @@
 #include <mach/rpm-smd.h>
 #include <mach/rpm-regulator-smd.h>
 #include <mach/socinfo.h>
+#include <mach/msm_smem.h>
 #include "board-dt.h"
 #include "clock.h"
 #include "devices.h"
@@ -92,6 +93,7 @@ static void __init msm8974_early_memory(void)
  */
 void __init msm8974_add_drivers(void)
 {
+	msm_smem_init();
 	msm_init_modem_notifier_list();
 	msm_smd_init();
 	msm_rpm_driver_init();
@@ -104,7 +106,11 @@ void __init msm8974_add_drivers(void)
 	else
 		msm_clock_init(&msm8974_clock_init_data);
 	tsens_tm_init_driver();
+#ifdef CONFIG_INTELLI_THERMAL
+	msm_thermal_init(NULL);
+#else
 	msm_thermal_device_init();
+#endif
 }
 
 static struct of_dev_auxdata msm8974_auxdata_lookup[] __initdata = {

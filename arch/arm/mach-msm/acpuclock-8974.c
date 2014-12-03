@@ -56,7 +56,11 @@ static struct scalable scalable[] __initdata = {
 		.hfpll_phys_base = 0xF908A000,
 		.l2cpmr_iaddr = 0x4501,
 		.sec_clk_sel = 2,
+#ifdef CONFIG_CPU_OVERCLOCK
+		.vreg[VREG_CORE] = { "krait0",     1200000 },
+#else
 		.vreg[VREG_CORE] = { "krait0",     1100000 },
+#endif
 		.vreg[VREG_MEM]  = { "krait0_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait0_dig", LVL_HIGH },
 		.vreg[VREG_HFPLL_A] = { "krait0_hfpll", 1800000 },
@@ -65,7 +69,11 @@ static struct scalable scalable[] __initdata = {
 		.hfpll_phys_base = 0xF909A000,
 		.l2cpmr_iaddr = 0x5501,
 		.sec_clk_sel = 2,
+#ifdef CONFIG_CPU_OVERCLOCK
+		.vreg[VREG_CORE] = { "krait1",     1200000 },
+#else
 		.vreg[VREG_CORE] = { "krait1",     1100000 },
+#endif
 		.vreg[VREG_MEM]  = { "krait1_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait1_dig", LVL_HIGH },
 		.vreg[VREG_HFPLL_A] = { "krait1_hfpll", 1800000 },
@@ -74,7 +82,11 @@ static struct scalable scalable[] __initdata = {
 		.hfpll_phys_base = 0xF90AA000,
 		.l2cpmr_iaddr = 0x6501,
 		.sec_clk_sel = 2,
+#ifdef CONFIG_CPU_OVERCLOCK
+		.vreg[VREG_CORE] = { "krait2",     1200000 },
+#else
 		.vreg[VREG_CORE] = { "krait2",     1100000 },
+#endif
 		.vreg[VREG_MEM]  = { "krait2_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait2_dig", LVL_HIGH },
 		.vreg[VREG_HFPLL_A] = { "krait2_hfpll", 1800000 },
@@ -83,7 +95,11 @@ static struct scalable scalable[] __initdata = {
 		.hfpll_phys_base = 0xF90BA000,
 		.l2cpmr_iaddr = 0x7501,
 		.sec_clk_sel = 2,
+#ifdef CONFIG_CPU_OVERCLOCK
+		.vreg[VREG_CORE] = { "krait3",     1200000 },
+#else
 		.vreg[VREG_CORE] = { "krait3",     1100000 },
+#endif
 		.vreg[VREG_MEM]  = { "krait3_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait3_dig", LVL_HIGH },
 		.vreg[VREG_HFPLL_A] = { "krait3_hfpll", 1800000 },
@@ -1058,10 +1074,10 @@ static struct l2_level l2_freq_tbl_v2[] __initdata = {
 	[10] = { { 1036800, HFPLL, 1,  54 }, LVL_NOM,   950000, 6 },
 	[11] = { { 1113600, HFPLL, 1,  58 }, LVL_HIGH, 1050000, 6 },
 	[12] = { { 1190400, HFPLL, 1,  62 }, LVL_HIGH, 1050000, 6 },
-	[13] = { { 1267200, HFPLL, 1,  66 }, LVL_HIGH, 1050000, 7 },
-	[14] = { { 1344000, HFPLL, 1,  70 }, LVL_HIGH, 1050000, 7 },
-	[15] = { { 1420800, HFPLL, 1,  74 }, LVL_HIGH, 1050000, 7 },
-	[16] = { { 1497600, HFPLL, 1,  78 }, LVL_HIGH, 1050000, 7 },
+	[13] = { { 1267200, HFPLL, 1,  66 }, LVL_HIGH, 1050000, 6 },
+	[14] = { { 1344000, HFPLL, 1,  70 }, LVL_HIGH, 1050000, 6 },
+	[15] = { { 1420800, HFPLL, 1,  74 }, LVL_HIGH, 1050000, 6 },
+	[16] = { { 1497600, HFPLL, 1,  78 }, LVL_HIGH, 1050000, 6 },
 	[17] = { { 1574400, HFPLL, 1,  82 }, LVL_HIGH, 1050000, 7 },
 	[18] = { { 1651200, HFPLL, 1,  86 }, LVL_HIGH, 1050000, 7 },
 	[19] = { { 1728000, HFPLL, 1,  90 }, LVL_HIGH, 1050000, 8 },
@@ -1468,6 +1484,11 @@ static struct acpu_level acpu_freq_tbl_2p2g_pvs6[] __initdata = {
 };
 
 static struct acpu_level acpu_freq_tbl_2p3g_pvs0[] __initdata = {
+#ifdef CONFIG_CPU_UNDERCLOCK
+	{ 1, {   96000, HFPLL, 2,  10 },  L2(0),  800000,   1 },
+	{ 1, {  192000, HFPLL, 2,  20 },  L2(0),  800000,   1 },
+	{ 1, {  249600, HFPLL, 2,  26 },  L2(0),  800000,   1 },
+#endif
 	{ 1, {  300000, PLL_0, 0,   0 },  L2(0),  800000,  72 },
 	{ 0, {  345600, HFPLL, 2,  36 },  L2(1),  800000,  83 },
 	{ 1, {  422400, HFPLL, 2,  44 },  L2(2),  800000, 101 },
@@ -1495,10 +1516,23 @@ static struct acpu_level acpu_freq_tbl_2p3g_pvs0[] __initdata = {
 	{ 0, { 2112000, HFPLL, 1, 110 }, L2(19), 1070000, 627 },
 	{ 0, { 2188800, HFPLL, 1, 114 }, L2(19), 1085000, 659 },
 	{ 1, { 2265600, HFPLL, 1, 118 }, L2(19), 1100000, 691 },
+#ifdef CONFIG_CPU_OVERCLOCK
+	{ 1, { 2419200, HFPLL, 1, 126 }, L2(19), 1130000, 738 },
+	{ 1, { 2572800, HFPLL, 1, 134 }, L2(19), 1160000, 827 },
+#ifdef CONFIG_OC_ULTIMATE
+	{ 1, { 2726400, HFPLL, 1, 142 }, L2(19), 1190000, 900 },
+	{ 1, { 2803200, HFPLL, 1, 146 }, L2(19), 1200000, 937 },
+#endif
+#endif	
 	{ 0, { 0 } }
 };
 
 static struct acpu_level acpu_freq_tbl_2p3g_pvs1[] __initdata = {
+#ifdef CONFIG_CPU_UNDERCLOCK
+	{ 1, {   96000, HFPLL, 2,  10 },  L2(0),  800000,   1 },
+	{ 1, {  192000, HFPLL, 2,  20 },  L2(0),  800000,   1 },
+	{ 1, {  249600, HFPLL, 2,  26 },  L2(0),  800000,   1 },
+#endif
 	{ 1, {  300000, PLL_0, 0,   0 },  L2(0),  800000,  72 },
 	{ 0, {  345600, HFPLL, 2,  36 },  L2(1),  800000,  83 },
 	{ 1, {  422400, HFPLL, 2,  44 },  L2(2),  800000, 101 },
@@ -1526,10 +1560,23 @@ static struct acpu_level acpu_freq_tbl_2p3g_pvs1[] __initdata = {
 	{ 0, { 2112000, HFPLL, 1, 110 }, L2(19), 1045000, 627 },
 	{ 0, { 2188800, HFPLL, 1, 114 }, L2(19), 1060000, 659 },
 	{ 1, { 2265600, HFPLL, 1, 118 }, L2(19), 1075000, 691 },
+#ifdef CONFIG_CPU_OVERCLOCK
+	{ 1, { 2419200, HFPLL, 1, 126 }, L2(19), 1105000, 738 },
+	{ 1, { 2572800, HFPLL, 1, 134 }, L2(19), 1135000, 827 },
+#ifdef CONFIG_OC_ULTIMATE
+	{ 1, { 2726400, HFPLL, 1, 142 }, L2(19), 1165000, 900 },
+	{ 1, { 2803200, HFPLL, 1, 146 }, L2(19), 1180000, 937 },
+#endif
+#endif	
 	{ 0, { 0 } }
 };
 
 static struct acpu_level acpu_freq_tbl_2p3g_pvs2[] __initdata = {
+#ifdef CONFIG_CPU_UNDERCLOCK
+	{ 1, {   96000, HFPLL, 2,  10 },  L2(0),  775000,   1 },
+	{ 1, {  192000, HFPLL, 2,  20 },  L2(0),  775000,   1 },
+	{ 1, {  249600, HFPLL, 2,  26 },  L2(0),  775000,   1 },
+#endif
 	{ 1, {  300000, PLL_0, 0,   0 },  L2(0),  775000,  72 },
 	{ 0, {  345600, HFPLL, 2,  36 },  L2(1),  775000,  83 },
 	{ 1, {  422400, HFPLL, 2,  44 },  L2(2),  775000, 101 },
@@ -1557,10 +1604,23 @@ static struct acpu_level acpu_freq_tbl_2p3g_pvs2[] __initdata = {
 	{ 0, { 2112000, HFPLL, 1, 110 }, L2(19), 1020000, 627 },
 	{ 0, { 2188800, HFPLL, 1, 114 }, L2(19), 1035000, 659 },
 	{ 1, { 2265600, HFPLL, 1, 118 }, L2(19), 1050000, 691 },
+#ifdef CONFIG_CPU_OVERCLOCK
+	{ 1, { 2419200, HFPLL, 1, 126 }, L2(19), 1080000, 738 },
+	{ 1, { 2572800, HFPLL, 1, 134 }, L2(19), 1110000, 827 },
+#ifdef CONFIG_OC_ULTIMATE
+	{ 1, { 2726400, HFPLL, 1, 142 }, L2(19), 1140000, 900 },
+	{ 1, { 2803200, HFPLL, 1, 146 }, L2(19), 1155000, 937 },
+#endif
+#endif	
 	{ 0, { 0 } }
 };
 
 static struct acpu_level acpu_freq_tbl_2p3g_pvs3[] __initdata = {
+#ifdef CONFIG_CPU_UNDERCLOCK
+	{ 1, {   96000, HFPLL, 2,  10 },  L2(0),  775000,   1 },
+	{ 1, {  192000, HFPLL, 2,  20 },  L2(0),  775000,   1 },
+	{ 1, {  249600, HFPLL, 2,  26 },  L2(0),  775000,   1 },
+#endif
 	{ 1, {  300000, PLL_0, 0,   0 },  L2(0),  775000,  72 },
 	{ 0, {  345600, HFPLL, 2,  36 },  L2(1),  775000,  83 },
 	{ 1, {  422400, HFPLL, 2,  44 },  L2(2),  775000, 101 },
@@ -1588,10 +1648,23 @@ static struct acpu_level acpu_freq_tbl_2p3g_pvs3[] __initdata = {
 	{ 0, { 2112000, HFPLL, 1, 110 }, L2(19),  995000, 627 },
 	{ 0, { 2188800, HFPLL, 1, 114 }, L2(19), 1010000, 659 },
 	{ 1, { 2265600, HFPLL, 1, 118 }, L2(19), 1025000, 691 },
+#ifdef CONFIG_CPU_OVERCLOCK
+	{ 1, { 2419200, HFPLL, 1, 126 }, L2(19), 1055000, 738 },
+	{ 1, { 2572800, HFPLL, 1, 134 }, L2(19), 1085000, 827 },
+#ifdef CONFIG_OC_ULTIMATE
+	{ 1, { 2726400, HFPLL, 1, 142 }, L2(19), 1115000, 900 },
+	{ 1, { 2803200, HFPLL, 1, 146 }, L2(19), 1130000, 937 },
+#endif
+#endif	
 	{ 0, { 0 } }
 };
 
 static struct acpu_level acpu_freq_tbl_2p3g_pvs4[] __initdata = {
+#ifdef CONFIG_CPU_UNDERCLOCK
+	{ 1, {   96000, HFPLL, 2,  10 },  L2(0),  775000,   1 },
+	{ 1, {  192000, HFPLL, 2,  20 },  L2(0),  775000,   1 },
+	{ 1, {  249600, HFPLL, 2,  26 },  L2(0),  775000,   1 },
+#endif
 	{ 1, {  300000, PLL_0, 0,   0 },  L2(0),  775000,  72 },
 	{ 0, {  345600, HFPLL, 2,  36 },  L2(1),  775000,  83 },
 	{ 1, {  422400, HFPLL, 2,  44 },  L2(2),  775000, 101 },
@@ -1619,10 +1692,23 @@ static struct acpu_level acpu_freq_tbl_2p3g_pvs4[] __initdata = {
 	{ 0, { 2112000, HFPLL, 1, 110 }, L2(19),  975000, 627 },
 	{ 0, { 2188800, HFPLL, 1, 114 }, L2(19),  985000, 659 },
 	{ 1, { 2265600, HFPLL, 1, 118 }, L2(19), 1000000, 691 },
+#ifdef CONFIG_CPU_OVERCLOCK
+	{ 1, { 2419200, HFPLL, 1, 126 }, L2(19), 1030000, 738 },
+	{ 1, { 2572800, HFPLL, 1, 134 }, L2(19), 1060000, 827 },
+#ifdef CONFIG_OC_ULTIMATE
+	{ 1, { 2726400, HFPLL, 1, 142 }, L2(19), 1090000, 900 },
+	{ 1, { 2803200, HFPLL, 1, 146 }, L2(19), 1115000, 937 },
+#endif
+#endif	
 	{ 0, { 0 } }
 };
 
 static struct acpu_level acpu_freq_tbl_2p3g_pvs5[] __initdata = {
+#ifdef CONFIG_CPU_UNDERCLOCK
+	{ 1, {   96000, HFPLL, 2,  10 },  L2(0),  750000,   1 },
+	{ 1, {  192000, HFPLL, 2,  20 },  L2(0),  750000,   1 },
+	{ 1, {  249600, HFPLL, 2,  26 },  L2(0),  750000,   1 },
+#endif
 	{ 1, {  300000, PLL_0, 0,   0 },  L2(0),  750000,  72 },
 	{ 0, {  345600, HFPLL, 2,  36 },  L2(1),  750000,  83 },
 	{ 1, {  422400, HFPLL, 2,  44 },  L2(2),  750000, 101 },
@@ -1650,10 +1736,23 @@ static struct acpu_level acpu_freq_tbl_2p3g_pvs5[] __initdata = {
 	{ 0, { 2112000, HFPLL, 1, 110 }, L2(19),  955000, 627 },
 	{ 0, { 2188800, HFPLL, 1, 114 }, L2(19),  965000, 659 },
 	{ 1, { 2265600, HFPLL, 1, 118 }, L2(19),  975000, 691 },
+#ifdef CONFIG_CPU_OVERCLOCK
+	{ 1, { 2419200, HFPLL, 1, 126 }, L2(19), 1005000, 738 },
+	{ 1, { 2572800, HFPLL, 1, 134 }, L2(19), 1035000, 827 },
+#ifdef CONFIG_OC_ULTIMATE
+	{ 1, { 2726400, HFPLL, 1, 142 }, L2(19), 1065000, 900 },
+	{ 1, { 2803200, HFPLL, 1, 146 }, L2(19), 1080000, 937 },
+#endif
+#endif	
 	{ 0, { 0 } }
 };
 
 static struct acpu_level acpu_freq_tbl_2p3g_pvs6[] __initdata = {
+#ifdef CONFIG_CPU_UNDERCLOCK
+	{ 1, {   96000, HFPLL, 2,  10 },  L2(0),  750000,   1 },
+	{ 1, {  192000, HFPLL, 2,  20 },  L2(0),  750000,   1 },
+	{ 1, {  249600, HFPLL, 2,  26 },  L2(0),  750000,   1 },
+#endif
 	{ 1, {  300000, PLL_0, 0,   0 },  L2(0),  750000,  72 },
 	{ 0, {  345600, HFPLL, 2,  36 },  L2(1),  750000,  83 },
 	{ 1, {  422400, HFPLL, 2,  44 },  L2(2),  750000, 101 },
@@ -1681,6 +1780,14 @@ static struct acpu_level acpu_freq_tbl_2p3g_pvs6[] __initdata = {
 	{ 0, { 2112000, HFPLL, 1, 110 }, L2(19),  930000, 627 },
 	{ 0, { 2188800, HFPLL, 1, 114 }, L2(19),  940000, 659 },
 	{ 1, { 2265600, HFPLL, 1, 118 }, L2(19),  950000, 691 },
+#ifdef CONFIG_CPU_OVERCLOCK
+	{ 1, { 2419200, HFPLL, 1, 126 }, L2(19),  980000, 738 },
+	{ 1, { 2572800, HFPLL, 1, 134 }, L2(19), 1010000, 827 },
+#ifdef CONFIG_OC_ULTIMATE
+	{ 1, { 2726400, HFPLL, 1, 142 }, L2(19), 1040000, 900 },
+	{ 1, { 2803200, HFPLL, 1, 146 }, L2(19), 1055000, 937 },
+#endif
+#endif	
 	{ 0, { 0 } }
 };
 
