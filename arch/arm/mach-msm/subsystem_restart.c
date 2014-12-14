@@ -32,7 +32,6 @@
 #include <linux/debugfs.h>
 #include <linux/miscdevice.h>
 #include <linux/interrupt.h>
-#include <linux/of_gpio.h>
 
 #include <asm/current.h>
 
@@ -46,11 +45,6 @@
 #include "smd_private.h"
 
 static int enable_debug;
-
-/* START : subsys_modem_restart : testmode */
-extern bool ignore_errors_by_subsys_modem_restart;
-/* END : subsys_modem_restart : testmode */
-
 module_param(enable_debug, int, S_IRUGO | S_IWUSR);
 
 /**
@@ -146,7 +140,6 @@ struct restart_log {
  * @dentry: debugfs directory for this device
  * @do_ramdump_on_put: ramdump on subsystem_put() if true
  * @err_ready: completion variable to record error ready from subsystem
- * @crashed: indicates if subsystem has crashed
  */
 struct subsys_device {
 	struct subsys_desc *desc;
@@ -170,11 +163,10 @@ struct subsys_device {
 	struct miscdevice misc_dev;
 	char miscdevice_name[32];
 	struct completion err_ready;
-	bool crashed;
 };
 
 #ifdef CONFIG_MACH_LGE
-static int modem_reboot_cnt;
+static int modem_reboot_cnt = 0;
 #endif
 
 static struct subsys_device *to_subsys(struct device *d)
@@ -527,10 +519,8 @@ static int subsys_start(struct subsys_device *subsys)
 	if (ret)
 		return ret;
 
-	if (subsys->desc->is_not_loadable) {
-		subsys_set_state(subsys, SUBSYS_ONLINE);
+	if (subsys->desc->is_not_loadable)
 		return 0;
-	}
 
 	ret = wait_for_err_ready(subsys);
 	if (ret)
@@ -602,8 +592,8 @@ void *subsystem_get(const char *name)
 			retval = ERR_PTR(ret);
 			goto err_start;
 		}
-		/*                                      
-                                    */
+		/* QCT Debug code for modem stuck issue,
+	 	 * secheol.pyo@lge.com, 2013-05-01*/
 		pr_info("[LGE Debug] subsys: %s get start %d by %d[%s]\n",
 			name, subsys->count,
 			current->pid, current->comm);
@@ -643,8 +633,8 @@ void subsystem_put(void *subsystem)
 			subsys->desc->name, __func__))
 		goto err_out;
 	if (!--subsys->count) {
-/*                                             
-                                  
+/* [LGE_S]QCT Debug code for modem stuck issue,
+ * secheol.pyo@lge.com, 2013-05-01
  */
 		pr_info("[LGE DEBUG]subsys: %s put stop %d by %d[%s]\n",
 			 subsys->desc->name, subsys->count,
@@ -658,13 +648,14 @@ void subsystem_put(void *subsystem)
 			subsys_stop(subsys);
 			if (subsys->do_ramdump_on_put)
 				subsystem_ramdump(subsys, NULL);
-		} else {
+		}
+		else {
 			pr_info("[LGE DEBUG]subsys: block modem put stop for stabilty\n");
 			subsys->count++;
 		}
 #endif
-/*                                             
-                                  
+/* [LGE_E]QCT Debug code for modem stuck issue,
+ * secheol.pyo@lge.com, 2013-05-01
  */
 	}
 	mutex_unlock(&track->lock);
@@ -854,7 +845,6 @@ int subsystem_restart(const char *name)
 }
 EXPORT_SYMBOL(subsystem_restart);
 
-/* START : subsys_modem_restart : testmode */
 /**
  * subsys_modem_restart() - modem restart silently
  *
@@ -879,7 +869,6 @@ int subsys_modem_restart(void)
 
 	rsl = dev->restart_level;
 	dev->restart_level = RESET_SUBSYS_COUPLED;
-	ignore_errors_by_subsys_modem_restart = true; //                         
 	ret = subsystem_restart_dev(dev);
 	dev->restart_level = rsl;
 	modem_reboot_cnt--;
@@ -888,7 +877,6 @@ int subsys_modem_restart(void)
 	return ret;
 }
 EXPORT_SYMBOL(subsys_modem_restart);
-/* END : subsys_modem_restart : testmode */
 
 int subsystem_crashed(const char *name)
 {
@@ -917,15 +905,6 @@ int subsystem_crashed(const char *name)
 }
 EXPORT_SYMBOL(subsystem_crashed);
 
-void subsys_set_crash_status(struct subsys_device *dev, bool crashed)
-{
-	dev->crashed = true;
-}
-
-bool subsys_get_crash_status(struct subsys_device *dev)
-{
-	return dev->crashed;
-}
 #ifdef CONFIG_DEBUG_FS
 static ssize_t subsys_debugfs_read(struct file *filp, char __user *ubuf,
 		size_t cnt, loff_t *ppos)
@@ -1054,8 +1033,8 @@ static void subsys_device_release(struct device *dev)
 static irqreturn_t subsys_err_ready_intr_handler(int irq, void *subsys)
 {
 	struct subsys_device *subsys_dev = subsys;
-	dev_info(subsys_dev->desc->dev,
-		"Subsystem error monitoring/handling services are up\n");
+	pr_info("Error ready interrupt occured for %s\n",
+		 subsys_dev->desc->name);
 
 	if (subsys_dev->desc->is_not_loadable)
 		return IRQ_HANDLED;
@@ -1091,129 +1070,6 @@ static void subsys_misc_device_remove(struct subsys_device *subsys_dev)
 	misc_deregister(&subsys_dev->misc_dev);
 }
 
-static int __get_gpio(struct subsys_desc *desc, const char *prop,
-		int *gpio)
-{
-	struct device_node *dnode = desc->dev->of_node;
-	int ret = -ENOENT;
-
-	if (of_find_property(dnode, prop, NULL)) {
-		*gpio = of_get_named_gpio(dnode, prop, 0);
-		ret = *gpio < 0 ? *gpio : 0;
-	}
-
-	return ret;
-}
-
-static int __get_irq(struct subsys_desc *desc, const char *prop,
-		unsigned int *irq)
-{
-	int ret, gpio, irql;
-
-	ret = __get_gpio(desc, prop, &gpio);
-	if (ret)
-		return ret;
-
-	irql = gpio_to_irq(gpio);
-
-	if (irql == -ENOENT)
-		irql = -ENXIO;
-
-	if (irql < 0) {
-		pr_err("[%s]: Error getting IRQ \"%s\"\n", desc->name,
-				prop);
-		return irql;
-	} else {
-		*irq = irql;
-	}
-
-	return 0;
-}
-
-static int subsys_parse_devicetree(struct subsys_desc *desc)
-{
-	int ret;
-	struct platform_device *pdev = container_of(desc->dev,
-					struct platform_device, dev);
-
-	ret = __get_irq(desc, "qcom,gpio-err-fatal", &desc->err_fatal_irq);
-	if (ret && ret != -ENOENT)
-		return ret;
-
-	ret = __get_irq(desc, "qcom,gpio-err-ready", &desc->err_ready_irq);
-	if (ret && ret != -ENOENT)
-		return ret;
-
-	ret = __get_irq(desc, "qcom,gpio-stop-ack", &desc->stop_ack_irq);
-	if (ret && ret != -ENOENT)
-		return ret;
-
-	ret = __get_gpio(desc, "qcom,gpio-force-stop", &desc->force_stop_gpio);
-	if (ret && ret != -ENOENT)
-		return ret;
-
-	desc->wdog_bite_irq = platform_get_irq(pdev, 0);
-	if (desc->wdog_bite_irq < 0)
-		return desc->wdog_bite_irq;
-
-	return 0;
-}
-
-static int subsys_setup_irqs(struct subsys_device *subsys)
-{
-	struct subsys_desc *desc = subsys->desc;
-	int ret;
-
-	if (desc->err_fatal_irq && desc->err_fatal_handler) {
-		ret = devm_request_irq(desc->dev, desc->err_fatal_irq,
-				desc->err_fatal_handler,
-				IRQF_TRIGGER_RISING, desc->name, desc);
-		if (ret < 0) {
-			dev_err(desc->dev, "[%s]: Unable to register error fatal IRQ handler!: %d\n",
-				desc->name, ret);
-			return ret;
-		}
-	}
-
-	if (desc->stop_ack_irq && desc->stop_ack_handler) {
-		ret = devm_request_irq(desc->dev, desc->stop_ack_irq,
-			desc->stop_ack_handler,
-			IRQF_TRIGGER_RISING, desc->name, desc);
-		if (ret < 0) {
-			dev_err(desc->dev, "[%s]: Unable to register stop ack handler!: %d\n",
-				desc->name, ret);
-			return ret;
-		}
-	}
-
-	if (desc->wdog_bite_irq && desc->wdog_bite_handler) {
-		ret = devm_request_irq(desc->dev, desc->wdog_bite_irq,
-			desc->wdog_bite_handler,
-			IRQF_TRIGGER_RISING, desc->name, desc);
-		if (ret < 0) {
-			dev_err(desc->dev, "[%s]: Unable to register wdog bite handler!: %d\n",
-				desc->name, ret);
-			return ret;
-		}
-	}
-
-	if (desc->err_ready_irq) {
-		ret = devm_request_irq(desc->dev,
-					desc->err_ready_irq,
-					subsys_err_ready_intr_handler,
-					IRQF_TRIGGER_RISING,
-					"error_ready_interrupt", subsys);
-		if (ret < 0) {
-			dev_err(desc->dev,
-				"[%s]: Unable to register err ready handler\n",
-				desc->name);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
 struct subsys_device *subsys_register(struct subsys_desc *desc)
 {
 	struct subsys_device *subsys;
@@ -1231,9 +1087,6 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 
 	subsys->notify = subsys_notif_add_subsys(desc->name);
 	subsys->restart_order = update_restart_order(subsys);
-	ret = subsys_parse_devicetree(desc);
-	if (ret)
-		goto err_dtree;
 
 	snprintf(subsys->wlname, sizeof(subsys->wlname), "ssr(%s)", desc->name);
 	wake_lock_init(&subsys->wake_lock, WAKE_LOCK_SUSPEND, subsys->wlname);
@@ -1265,9 +1118,19 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 		goto err_register;
 	}
 
-	ret = subsys_setup_irqs(subsys);
-	if (ret < 0)
-		goto err_misc_device;
+	if (subsys->desc->err_ready_irq) {
+		ret = devm_request_irq(&subsys->dev,
+					subsys->desc->err_ready_irq,
+					subsys_err_ready_intr_handler,
+					IRQF_TRIGGER_RISING,
+					"error_ready_interrupt", subsys);
+		if (ret < 0) {
+			dev_err(&subsys->dev,
+				"[%s]: Unable to register err ready handler\n",
+				subsys->desc->name);
+			goto err_misc_device;
+		}
+	}
 
 	return subsys;
 
@@ -1280,7 +1143,6 @@ err_debugfs:
 	ida_simple_remove(&subsys_ida, subsys->id);
 err_ida:
 	wake_lock_destroy(&subsys->wake_lock);
-err_dtree:
 	kfree(subsys);
 	return ERR_PTR(ret);
 }

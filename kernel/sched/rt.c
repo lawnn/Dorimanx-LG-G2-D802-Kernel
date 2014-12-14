@@ -685,7 +685,6 @@ balanced:
 		 * runtime - in which case borrowing doesn't make sense.
 		 */
 		rt_rq->rt_runtime = RUNTIME_INF;
-		rt_rq->rt_throttled = 0;
 		raw_spin_unlock(&rt_rq->rt_runtime_lock);
 		raw_spin_unlock(&rt_b->rt_runtime_lock);
 	}
@@ -871,12 +870,7 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 
 			if (!once) {
 				once = true;
-#ifdef CONFIG_MACH_LGE
-				printk_sched("sched: RT throttling activated => task_name [%s]\n", \
-					rt_rq->rq->curr->comm);
-#else
 				printk_sched("sched: RT throttling activated\n");
-#endif
 			}
 		} else {
 			/*

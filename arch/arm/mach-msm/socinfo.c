@@ -28,20 +28,15 @@
 
 #include <mach/socinfo.h>
 #include <mach/msm_smem.h>
-#include <mach/cpufreq.h>
 
 #include "boot_stats.h"
 
 #define BUILD_ID_LENGTH 32
-#define SMEM_IMAGE_VERSION_BLOCKS_COUNT 32
-#define SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE 128
-#define SMEM_IMAGE_VERSION_SIZE 4096
-#define SMEM_IMAGE_VERSION_NAME_SIZE 75
-#define SMEM_IMAGE_VERSION_VARIANT_SIZE 20
-#define SMEM_IMAGE_VERSION_VARIANT_OFFSET 75
-#define SMEM_IMAGE_VERSION_OEM_SIZE 32
-#define SMEM_IMAGE_VERSION_OEM_OFFSET 96
-#define SMEM_IMAGE_VERSION_PARTITION_APPS 10
+
+#ifdef CONFIG_MACH_LGE
+extern int g_speed_bin;
+extern int g_pvs_bin;
+#endif
 
 enum {
 	HW_PLATFORM_UNKNOWN = 0,
@@ -76,7 +71,7 @@ const char *hw_platform[] = {
 };
 
 #ifdef CONFIG_MACH_LGE
-/*                 */
+/* LGE platform id */
 enum {
 	HW_PLATFORM_LGE_START   = 100,
 	HW_PLATFORM_LGPS11      = 100,
@@ -95,7 +90,6 @@ enum {
 	HW_PLATFORM_Z_KR	= 130,
 	HW_PLATFORM_VU3_KR      = 144,
 	HW_PLATFORM_G2_KDDI	   = 150,
-        HW_PLATFORM_B1_KR       = 177,
 	HW_PLATFORM_LGE_INVALID
 };
 
@@ -116,31 +110,12 @@ const char *hw_platform_lge[] = {
 	[HW_PLATFORM_Z_KR - HW_PLATFORM_LGE_START] 	  = "Z_KR",
 	[HW_PLATFORM_VU3_KR - HW_PLATFORM_LGE_START] 	  = "VU3_KR",
 	[HW_PLATFORM_G2_KDDI - HW_PLATFORM_LGE_START] 	= "G2_KDDI",
-        [HW_PLATFORM_B1_KR - HW_PLATFORM_LGE_START]       = "B1_KR",
 };
 #endif
 
 enum {
 	ACCESSORY_CHIP_UNKNOWN = 0,
 	ACCESSORY_CHIP_CHARM = 58,
-};
-
-enum {
-	PLATFORM_SUBTYPE_QRD = 0x0,
-	PLATFORM_SUBTYPE_SKUAA = 0x1,
-	PLATFORM_SUBTYPE_SKUF = 0x2,
-	PLATFORM_SUBTYPE_SKUAB = 0x3,
-	PLATFORM_SUBTYPE_SKUG = 0x5,
-	PLATFORM_SUBTYPE_QRD_INVALID,
-};
-
-const char *qrd_hw_platform_subtype[] = {
-	[PLATFORM_SUBTYPE_QRD] = "QRD",
-	[PLATFORM_SUBTYPE_SKUAA] = "SKUAA",
-	[PLATFORM_SUBTYPE_SKUF] = "SKUF",
-	[PLATFORM_SUBTYPE_SKUAB] = "SKUAB",
-	[PLATFORM_SUBTYPE_SKUG] = "SKUG",
-	[PLATFORM_SUBTYPE_QRD_INVALID] = "INVALID",
 };
 
 enum {
@@ -355,24 +330,6 @@ static enum msm_cpu cpu_of_id[] = {
 	[185] = MSM_CPU_8974,
 	[186] = MSM_CPU_8974,
 
-	/* 8974AA IDs */
-	[208] = MSM_CPU_8974PRO_AA,
-	[211] = MSM_CPU_8974PRO_AA,
-	[214] = MSM_CPU_8974PRO_AA,
-	[217] = MSM_CPU_8974PRO_AA,
-
-	/* 8974AB IDs */
-	[209] = MSM_CPU_8974PRO_AB,
-	[212] = MSM_CPU_8974PRO_AB,
-	[215] = MSM_CPU_8974PRO_AB,
-	[218] = MSM_CPU_8974PRO_AB,
-
-	/* 8974AC IDs */
-	[194] = MSM_CPU_8974PRO_AC,
-	[210] = MSM_CPU_8974PRO_AC,
-	[213] = MSM_CPU_8974PRO_AC,
-	[216] = MSM_CPU_8974PRO_AC,
-
 	/* 8625 IDs */
 	[127] = MSM_CPU_8625,
 	[128] = MSM_CPU_8625,
@@ -421,12 +378,6 @@ static enum msm_cpu cpu_of_id[] = {
 	[199] = MSM_CPU_8226,
 	[200] = MSM_CPU_8226,
 	[205] = MSM_CPU_8226,
-	[219] = MSM_CPU_8226,
-	[220] = MSM_CPU_8226,
-	[221] = MSM_CPU_8226,
-	[222] = MSM_CPU_8226,
-	[223] = MSM_CPU_8226,
-	[224] = MSM_CPU_8226,
 
 	/* 8092 IDs */
 	[146] = MSM_CPU_8092,
@@ -476,7 +427,6 @@ static enum msm_cpu cpu_of_id[] = {
 };
 
 static enum msm_cpu cur_cpu;
-static int current_image;
 
 static struct socinfo_v1 dummy_socinfo = {
 	.format = 1,
@@ -484,8 +434,8 @@ static struct socinfo_v1 dummy_socinfo = {
 };
 
 #ifndef CONFIG_MACH_MSM8974_G2_KDDI
-/*                                                                         */
-/*                                        */
+/*LGE_CHANGE_S, hyeongjin.kim@lge.com, 2013-03-29, HiddenMenu SMPL Counter */
+/*LGE_UPDATE_S, jongbum.kim, 20111024 -->[*/
 u16 *poweron_st = 0;
 uint16_t power_on_status_info_get(void)
 {
@@ -495,8 +445,8 @@ uint16_t power_on_status_info_get(void)
     return *poweron_st;
 }
 EXPORT_SYMBOL(power_on_status_info_get);
-/*                             */
-/*                                                                         */
+/*LGE_UPDATE_E,jongbum.kim <--]*/
+/*LGE_CHANGE_E, hyeongjin.kim@lge.com, 2013-03-29, HiddenMenu SMPL Counter */
 #endif
 
 uint32_t socinfo_get_id(void)
@@ -515,11 +465,11 @@ char *socinfo_get_build_id(void)
 	return (socinfo) ? socinfo->v1.build_id : NULL;
 }
 
-/*           
-                                                                  
-                                  
-                                              
-                                  
+/* LGE_CHANGE
+ * implement the userspace interface for reading soc serial number
+ * 2012-01-10 jaeseong.gim@lge.com
+ * modify address of serial number for msm8974
+ * 2013-02-07 duckhwan.lee@lge.com
  */
 #ifdef CONFIG_ARCH_MSM8974
 #include <linux/io.h>
@@ -596,11 +546,6 @@ uint32_t socinfo_get_pmic_die_revision(void)
 		: 0;
 }
 
-static char *socinfo_get_image_version_base_address(void)
-{
-	return smem_alloc(SMEM_IMAGE_VERSION_TABLE, SMEM_IMAGE_VERSION_SIZE);
-}
-
 static uint32_t socinfo_get_format(void)
 {
 	return socinfo ? socinfo->v1.format : 0;
@@ -656,23 +601,22 @@ socinfo_show_build_id(struct sys_device *dev,
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n", socinfo_get_build_id());
 }
 
-/*           
-                                                                  
-                                  
-                                              
-                                  
-                                 
-                              
+/* LGE_CHANGE
+ * implement the userspace interface for reading soc serial number
+ * 2012-01-10 jaeseong.gim@lge.com
+ * modify address of serial number for msm8974
+ * 2013-02-07 duckhwan.lee@lge.com
+ * added speed_bin & pvs_bin info
+ * 2013-06-07 fred.cho@lge.com
  */
 #ifdef CONFIG_ARCH_MSM8974
+#ifdef CONFIG_MACH_LGE
 static ssize_t
 socinfo_show_speed_bin(struct sys_device *dev,
 		      struct sysdev_attribute *attr,
 		      char *buf)
 {
-	int speed = 0;
-	get_speed_bin(&speed);
-	return snprintf(buf, PAGE_SIZE, "%u\n", speed);
+	return snprintf(buf, PAGE_SIZE, "%u\n", g_speed_bin);
 }
 
 static ssize_t
@@ -680,10 +624,9 @@ socinfo_show_pvs_bin(struct sys_device *dev,
 		      struct sysdev_attribute *attr,
 		      char *buf)
 {
-	int pvs = 0;
-	get_pvs_bin(&pvs);
-	return snprintf(buf, PAGE_SIZE, "%u\n", pvs);
+	return snprintf(buf, PAGE_SIZE, "%u\n", g_pvs_bin);
 }
+#endif
 
 static ssize_t
 socinfo_show_serial_number(struct sys_device *dev,
@@ -828,18 +771,9 @@ socinfo_show_platform_subtype(struct sys_device *dev,
 	}
 
 	hw_subtype = socinfo_get_platform_subtype();
-	if (HW_PLATFORM_QRD == socinfo_get_platform_type()) {
-		if (hw_subtype >= PLATFORM_SUBTYPE_QRD_INVALID) {
-			pr_err("%s: Invalid hardware platform sub type for qrd found\n",
-				__func__);
-			hw_subtype = PLATFORM_SUBTYPE_QRD_INVALID;
-		}
-		return snprintf(buf, PAGE_SIZE, "%-.32s\n",
-					qrd_hw_platform_subtype[hw_subtype]);
-	}
 	if (hw_subtype >= PLATFORM_SUBTYPE_INVALID) {
 		pr_err("%s: Invalid hardware platform sub type found\n",
-			   __func__);
+								   __func__);
 		hw_subtype = PLATFORM_SUBTYPE_UNKNOWN;
 	}
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n",
@@ -954,16 +888,6 @@ msm_get_platform_subtype(struct device *dev,
 {
 	uint32_t hw_subtype;
 	hw_subtype = socinfo_get_platform_subtype();
-	if (HW_PLATFORM_QRD == socinfo_get_platform_type()) {
-		if (hw_subtype >= PLATFORM_SUBTYPE_QRD_INVALID) {
-			pr_err("%s: Invalid hardware platform sub type for qrd found\n",
-				__func__);
-			hw_subtype = PLATFORM_SUBTYPE_QRD_INVALID;
-		}
-		return snprintf(buf, PAGE_SIZE, "%-.32s\n",
-					qrd_hw_platform_subtype[hw_subtype]);
-	}
-
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n",
 		hw_platform_subtype[hw_subtype]);
 }
@@ -986,119 +910,21 @@ msm_get_pmic_die_revision(struct device *dev,
 			 socinfo_get_pmic_die_revision());
 }
 
-static ssize_t
-msm_get_image_version(struct device *dev,
-			struct device_attribute *attr,
-			char *buf)
-{
-	char *string_address;
-
-	string_address = socinfo_get_image_version_base_address();
-	if (string_address == NULL) {
-		pr_err("%s : Failed to get image version base address",
-				__func__);
-		return snprintf(buf, SMEM_IMAGE_VERSION_NAME_SIZE, "Unknown");
-	}
-	string_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
-	return snprintf(buf, SMEM_IMAGE_VERSION_NAME_SIZE, "%-.75s\n",
-			string_address);
-}
-
-static ssize_t
-msm_set_image_version(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf,
-			size_t count)
-{
-	char *store_address;
-
-	if (current_image != SMEM_IMAGE_VERSION_PARTITION_APPS)
-		return count;
-	store_address = socinfo_get_image_version_base_address();
-	if (store_address == NULL) {
-		pr_err("%s : Failed to get image version base address",
-				__func__);
-		return count;
-	}
-	store_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
-	snprintf(store_address, SMEM_IMAGE_VERSION_NAME_SIZE, "%-.75s", buf);
-	return count;
-}
-
-static ssize_t
-msm_get_image_variant(struct device *dev,
-			struct device_attribute *attr,
-			char *buf)
-{
-	char *string_address;
-
-	string_address = socinfo_get_image_version_base_address();
-	if (string_address == NULL) {
-		pr_err("%s : Failed to get image version base address",
-				__func__);
-		return snprintf(buf, SMEM_IMAGE_VERSION_VARIANT_SIZE,
-		"Unknown");
-	}
-	string_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
-	string_address += SMEM_IMAGE_VERSION_VARIANT_OFFSET;
-	return snprintf(buf, SMEM_IMAGE_VERSION_VARIANT_SIZE, "%-.20s\n",
-			string_address);
-}
-
-static ssize_t
-msm_set_image_variant(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf,
-			size_t count)
-{
-	char *store_address;
-
-	if (current_image != SMEM_IMAGE_VERSION_PARTITION_APPS)
-		return count;
-	store_address = socinfo_get_image_version_base_address();
-	if (store_address == NULL) {
-		pr_err("%s : Failed to get image version base address",
-				__func__);
-		return count;
-	}
-	store_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
-	store_address += SMEM_IMAGE_VERSION_VARIANT_OFFSET;
-	snprintf(store_address, SMEM_IMAGE_VERSION_VARIANT_SIZE, "%-.20s", buf);
-	return count;
-}
-
-static ssize_t
-msm_get_image_crm_version(struct device *dev,
-			struct device_attribute *attr,
-			char *buf)
-{
-	char *string_address;
-
-	string_address = socinfo_get_image_version_base_address();
-	if (string_address == NULL) {
-		pr_err("%s : Failed to get image version base address",
-				__func__);
-		return snprintf(buf, SMEM_IMAGE_VERSION_OEM_SIZE, "Unknown");
-	}
-	string_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
-	string_address += SMEM_IMAGE_VERSION_OEM_OFFSET;
-	return snprintf(buf, SMEM_IMAGE_VERSION_OEM_SIZE, "%-.32s\n",
-			string_address);
-}
-
 static struct sysdev_attribute socinfo_v1_files[] = {
 	_SYSDEV_ATTR(id, 0444, socinfo_show_id, NULL),
 	_SYSDEV_ATTR(version, 0444, socinfo_show_version, NULL),
 	_SYSDEV_ATTR(build_id, 0444, socinfo_show_build_id, NULL),
-#ifdef CONFIG_ARCH_MSM8974
+#ifdef CONFIG_MACH_LGE
 	_SYSDEV_ATTR(speed_bin, 0444, socinfo_show_speed_bin, NULL),
 	_SYSDEV_ATTR(pvs_bin, 0444, socinfo_show_pvs_bin, NULL),
-/*           
-                                                                  
-                                  
-                                              
-                                  
+#endif
+/* LGE_CHANGE
+ * implement the userspace interface for reading soc serial number
+ * 2012-01-10 jaeseong.gim@lge.com
+ * modify address of serial number for msm8974
+ * 2013-02-07 duckhwan.lee@lge.com
  */
+#ifdef CONFIG_ARCH_MSM8974
 	_SYSDEV_ATTR(serial_number, 0444, socinfo_show_serial_number, NULL),
 #endif
 };
@@ -1133,54 +959,6 @@ static struct sysdev_attribute socinfo_v7_files[] = {
 	_SYSDEV_ATTR(pmic_die_revision, 0444,
 			socinfo_show_pmic_die_revision, NULL),
 };
-
-static ssize_t
-msm_set_image_crm_version(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf,
-			size_t count)
-{
-	char *store_address;
-
-	if (current_image != SMEM_IMAGE_VERSION_PARTITION_APPS)
-		return count;
-	store_address = socinfo_get_image_version_base_address();
-	if (store_address == NULL) {
-		pr_err("%s : Failed to get image version base address",
-				__func__);
-		return count;
-	}
-	store_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
-	store_address += SMEM_IMAGE_VERSION_OEM_OFFSET;
-	snprintf(store_address, SMEM_IMAGE_VERSION_OEM_SIZE, "%-.32s", buf);
-	return count;
-}
-
-static ssize_t
-msm_get_image_number(struct device *dev,
-			struct device_attribute *attr,
-			char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			current_image);
-}
-
-static ssize_t
-msm_select_image(struct device *dev, struct device_attribute *attr,
-			const char *buf, size_t count)
-{
-	int ret, digit;
-
-	ret = kstrtoint(buf, 10, &digit);
-	if (ret)
-		return ret;
-	if (0 <= digit && digit < SMEM_IMAGE_VERSION_BLOCKS_COUNT)
-		current_image = digit;
-	else
-		current_image = 0;
-	return count;
-}
-
 
 static struct device_attribute msm_soc_attr_raw_version =
 	__ATTR(raw_version, S_IRUGO, msm_get_raw_version,  NULL);
@@ -1217,22 +995,6 @@ static struct device_attribute msm_soc_attr_pmic_model =
 static struct device_attribute msm_soc_attr_pmic_die_revision =
 	__ATTR(pmic_die_revision, S_IRUGO,
 			msm_get_pmic_die_revision, NULL);
-
-static struct device_attribute image_version =
-	__ATTR(image_version, S_IRUGO | S_IWUSR,
-			msm_get_image_version, msm_set_image_version);
-
-static struct device_attribute image_variant =
-	__ATTR(image_variant, S_IRUGO | S_IWUSR,
-			msm_get_image_variant, msm_set_image_variant);
-
-static struct device_attribute image_crm_version =
-	__ATTR(image_crm_version, S_IRUGO | S_IWUSR,
-			msm_get_image_crm_version, msm_set_image_crm_version);
-
-static struct device_attribute select_image =
-	__ATTR(select_image, S_IRUGO | S_IWUSR,
-			msm_get_image_number, msm_select_image);
 
 static struct sysdev_class soc_sysdev_class = {
 	.name = "soc",
@@ -1288,10 +1050,6 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 	uint32_t legacy_format = socinfo_get_format();
 
 	device_create_file(msm_soc_device, &msm_soc_attr_vendor);
-	device_create_file(msm_soc_device, &image_version);
-	device_create_file(msm_soc_device, &image_variant);
-	device_create_file(msm_soc_device, &image_crm_version);
-	device_create_file(msm_soc_device, &select_image);
 
 	switch (legacy_format) {
 	case 8:
@@ -1371,64 +1129,56 @@ static int __init socinfo_init_sysdev(void)
 
 	msm_soc_device = soc_device_to_device(soc_dev);
 	populate_soc_sysfs_files(msm_soc_device);
-
 	err = sysdev_class_register(&soc_sysdev_class);
 	if (err) {
 		pr_err("%s: sysdev_class_register fail (%d)\n",
 		       __func__, err);
-		goto socinfo_init_err;
+		return err;
 	}
-
 	err = sysdev_register(&soc_sys_device);
 	if (err) {
 		pr_err("%s: sysdev_register fail (%d)\n",
 		       __func__, err);
-		goto socinfo_init_err;
+		return err;
 	}
-
 	socinfo_create_files(&soc_sys_device, socinfo_v1_files,
 				ARRAY_SIZE(socinfo_v1_files));
 	if (socinfo->v1.format < 2)
-		goto socinfo_init_err;
-
+		return err;
 	socinfo_create_files(&soc_sys_device, socinfo_v2_files,
 				ARRAY_SIZE(socinfo_v2_files));
 
 	if (socinfo->v1.format < 3)
-		goto socinfo_init_err;
+		return err;
 
 	socinfo_create_files(&soc_sys_device, socinfo_v3_files,
 				ARRAY_SIZE(socinfo_v3_files));
 
 	if (socinfo->v1.format < 4)
-		goto socinfo_init_err;
+		return err;
 
 	socinfo_create_files(&soc_sys_device, socinfo_v4_files,
 				ARRAY_SIZE(socinfo_v4_files));
 
 	if (socinfo->v1.format < 5)
-		goto socinfo_init_err;
+		return err;
 
 	socinfo_create_files(&soc_sys_device, socinfo_v5_files,
 				ARRAY_SIZE(socinfo_v5_files));
 
 	if (socinfo->v1.format < 6)
-		goto socinfo_init_err;
+		return err;
 
 	socinfo_create_files(&soc_sys_device, socinfo_v6_files,
 				ARRAY_SIZE(socinfo_v6_files));
 
 	if (socinfo->v1.format < 7)
-		goto socinfo_init_err;
+		return err;
 
 	socinfo_create_files(&soc_sys_device, socinfo_v7_files,
 				ARRAY_SIZE(socinfo_v7_files));
 
 	return 0;
-
-socinfo_init_err:
-	 kfree(soc_dev_attr);
-         return err;
 }
 
 arch_initcall(socinfo_init_sysdev);
