@@ -170,17 +170,17 @@ BUILD_NOW()
 
 	# Check that RAMDISK is for this Branch. and check if need to push changes before switch to needed branch.
 
-	RAMDISK_BRANCH=$(git -C ../LG-G2-D802-Ramdisk/ commit | grep "origin/kitkat-ramdisk" | wc -l);
+	RAMDISK_BRANCH=$(git -C ../LG-G2-D802-Ramdisk/ commit | grep "origin/aosp-kk" | wc -l);
 	RAMDISK_NOT_SAVED=$(git -C ../LG-G2-D802-Ramdisk/ commit | grep "Changes not staged for commit" | wc -l);
 
 	if [ "$RAMDISK_BRANCH" == "1" ]; then
 		echo "Ram Disk is in the right branch!";
 	else
 		if [ "$RAMDISK_NOT_SAVED" != "1" ]; then
-			git -C ../LG-G2-D802-Ramdisk/ checkout kitkat-ramdisk;
-			echo -e "\e[1;31mRamDisk Switched to kitkat-ramdisk Branch!\e[m"
+			git -C ../LG-G2-D802-Ramdisk/ checkout aosp-kk;
+			echo -e "\e[1;31mRamDisk Switched to aosp-kk Branch!\e[m"
 		else
-			echo -e "\e[1;31mRamDisk has to be SAVED (commited) before switching to kitkat-ramdisk Branch\e[m";
+			echo -e "\e[1;31mRamDisk has to be SAVED (commited) before switching to aosp-kk Branch\e[m";
 			echo -e "\e[1;31mKernel Build Script exit! please (commit/Reset changes) and build again.\e[m";
 			exit 1;
 		fi;
@@ -266,7 +266,7 @@ BUILD_NOW()
 
 		# create the flashable zip file from the contents of the output directory
 		echo "Make flashable zip..........."
-		zip -r Kernel-"${GETVER}"-No-Knock-Code-KK-"$(date +"[%H-%M]-[%d-%m]-LG-${GETBRANCH}-PWR-CORE")".zip * >/dev/null
+		zip -r Kernel-"${GETVER}"-AOSP-KK-"$(date +"-[20%y-%d%m]-LG-${GETBRANCH}-PWR-CORE")".zip * >/dev/null
 		stat boot.img
 		rm -f ./*.img
 		cd ..
