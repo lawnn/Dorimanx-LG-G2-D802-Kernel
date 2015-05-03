@@ -34,6 +34,7 @@
 		defined(CONFIG_MACH_MSM8974_G2_CA) || \
 		defined(CONFIG_MACH_MSM8974_G2_TLS) || \
 		defined(CONFIG_MACH_MSM8974_G2_KR) || \
+		defined(CONFIG_MACH_MSM8974_G2_KDDI) || \
 		defined(CONFIG_MACH_MSM8974_G2_KT) || \
 		defined(CONFIG_MACH_MSM8974_G2_SPR) || \
 		defined(CONFIG_MACH_MSM8974_G2_VZW)
