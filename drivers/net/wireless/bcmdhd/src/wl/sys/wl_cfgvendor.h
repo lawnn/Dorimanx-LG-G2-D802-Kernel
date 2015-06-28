@@ -96,8 +96,10 @@ enum wl_vendor_subcmd {
 	GSCAN_SUBCMD_GET_CHANNEL_LIST,
 	ANDR_WIFI_SUBCMD_GET_FEATURE_SET,
 	ANDR_WIFI_SUBCMD_GET_FEATURE_SET_MATRIX,
-    /* Add more sub commands here */
-    GSCAN_SUBCMD_MAX,
+	ANDR_WIFI_SET_COUNTRY,
+
+	/* Add more sub commands here */
+	GSCAN_SUBCMD_MAX,
 
 	LSTATS_SUBCMD_GET_INFO = ANDROID_NL80211_SUBCMD_LSTATS_RANGE_START,
 };
@@ -189,8 +191,9 @@ typedef enum wl_vendor_event {
 } wl_vendor_event_t;
 
 enum andr_wifi_feature_set_attr {
-    ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET,
-    ANDR_WIFI_ATTRIBUTE_FEATURE_SET
+	ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET,
+	ANDR_WIFI_ATTRIBUTE_FEATURE_SET,
+	ANDR_WIFI_ATTRIBUTE_COUNTRY
 };
 
 typedef enum wl_vendor_gscan_attribute {
