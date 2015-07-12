@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -94,6 +94,12 @@ enum wcd9xxx_micbias_num {
 	MBHC_MICBIAS4,
 };
 
+enum hw_jack_type {
+	FOUR_POLE_JACK = 0,
+	FIVE_POLE_JACK,
+	SIX_POLE_JACK,
+};
+
 enum wcd9xx_mbhc_micbias_enable_bits {
 	MBHC_MICBIAS_ENABLE_THRESHOLD_HEADSET,
 	MBHC_MICBIAS_ENABLE_REGULAR_HEADSET,
@@ -103,6 +109,7 @@ enum wcd9xx_mbhc_cs_enable_bits {
 	MBHC_CS_ENABLE_POLLING,
 	MBHC_CS_ENABLE_INSERTION,
 	MBHC_CS_ENABLE_REMOVAL,
+	MBHC_CS_ENABLE_DET_ANC,
 };
 
 enum wcd9xxx_mbhc_state {
@@ -243,6 +250,7 @@ struct wcd9xxx_mbhc_config {
 	bool do_recalibration;
 	bool use_vddio_meas;
 	bool enable_anc_mic_detect;
+	enum hw_jack_type hw_jack_type;
 };
 
 struct wcd9xxx_cfilt_mode {
@@ -277,7 +285,7 @@ struct wcd9xxx_mbhc_cb {
 			   enum mbhc_impedance_detect_stages stage);
 	void (*compute_impedance) (s16 *, s16 *, uint32_t *, uint32_t *);
 	void (*enable_mbhc_txfe) (struct snd_soc_codec *, bool);
-	int (*enable_mb_source) (struct snd_soc_codec *, bool);
+	int (*enable_mb_source) (struct snd_soc_codec *, bool, bool);
 	void (*setup_int_rbias) (struct snd_soc_codec *, bool);
 	void (*pull_mb_to_vddio) (struct snd_soc_codec *, bool);
 };

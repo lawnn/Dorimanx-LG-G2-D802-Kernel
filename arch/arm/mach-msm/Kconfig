@@ -134,7 +134,7 @@ config ARCH_MSM8X60
 	select MULTI_IRQ_HANDLER
 	select MSM_MULTIMEDIA_USE_ION
 	select MSM_PM8X60 if PM
-	#select MSM_RUN_QUEUE_STATS
+	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
 	select USE_DEV_CTRL_VOLUME
 
@@ -168,7 +168,7 @@ config ARCH_MSM8960
 	select MULTI_IRQ_HANDLER
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
-	#select MSM_RUN_QUEUE_STATS
+	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
 	select MSM_KRAIT_WFE_FIXUP
 	select MSM_ULTRASOUND_A
@@ -276,7 +276,7 @@ config ARCH_MSM8974
 	select MSM_AUDIO_QDSP6V2 if SND_SOC
 	select MSM_RPM_REGULATOR_SMD
 	select ARM_HAS_SG_CHAIN
-	#select MSM_RUN_QUEUE_STATS
+	select MSM_RUN_QUEUE_STATS
 	select MEMORY_HOLE_CARVEOUT
 	select MSM_RPM_STATS_LOG
 	select QMI_ENCDEC
@@ -1959,6 +1959,13 @@ config MSM_CPUFREQ_LIMITER
 
 	  If in doubt, say Y.
 
+config ALUCARD_HOTPLUG_THERMAL
+	bool "Enable alucard-hotplug thermal control"
+	depends on ALUCARD_HOTPLUG
+	default n
+	help
+	  Alucard-hotplug thermal control
+
 config MSM_AVS_HW
 	bool "Enable Adaptive Voltage Scaling (AVS)"
 	default n
@@ -2941,6 +2948,14 @@ config MSM_DCVS
 	  The DCVS manager allows idle driver to feed the idle information to the
 	  algorithm and the algorithm returns a frequency for the core which is
 	  passed to the frequency change driver.
+
+config MSM_HOTPLUG
+	bool "MSM hotplug driver"
+	depends on HOTPLUG_CPU
+	default y
+	help
+	  The MSM hotplug driver controls on-/offlining of additional cores based
+	  on current cpu load.
 
 config MSM_CPR
 	tristate "Use MSM CPR in S/W mode"
