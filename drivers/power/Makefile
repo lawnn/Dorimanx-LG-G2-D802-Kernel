@@ -77,7 +77,8 @@ ifdef CONFIG_MACH_MSM8974_VU3_KR
 obj-$(CONFIG_QPNP_CHARGER)	+= qpnp-charger.o
 else
 ifdef CONFIG_MACH_MSM8974_G2_KDDI
-obj-$(CONFIG_QPNP_CHARGER)	+= qpnp-charger-kddi.o
+obj-$(CONFIG_QPNP_CHARGER)	+= qpnp-charger.o
+qpnp-charger-y  += qpnp-charger-kddi.o
 else
 ifdef CONFIG_MACH_MSM8974_B1_KR
 obj-$(CONFIG_QPNP_CHARGER)	+= qpnp-charger_b1_kr.o

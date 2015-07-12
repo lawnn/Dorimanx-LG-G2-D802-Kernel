@@ -19,7 +19,7 @@
 #define LGE_TOUCH_CORE_H
 
 /* #define MT_PROTOCOL_A */
-/*                              */
+/* #define LGE_TOUCH_TIME_DEBUG */
 #include <linux/earlysuspend.h>
 
 #define MAX_FINGER	10
@@ -322,7 +322,7 @@ struct lge_touch_data {
 	struct delayed_work			work_gesture_wakeup;
 	struct delayed_work			work_thermal;
 #endif
-#if defined(A1_only) || defined(CONFIG_LGE_Z_TOUCHSCREEN)
+#if (defined(A1_only)&& !defined(CONFIG_MACH_MSM8974_G2_KDDI)) || defined(CONFIG_LGE_Z_TOUCHSCREEN)
 	struct delayed_work			work_ime_drumming;
 #endif
 #if defined(CONFIG_FB)

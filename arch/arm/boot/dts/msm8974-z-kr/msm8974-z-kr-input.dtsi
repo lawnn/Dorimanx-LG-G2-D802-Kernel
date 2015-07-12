@@ -26,7 +26,8 @@
 				lcd_x	= <720>;
 				lcd_y	= <1280>;
 				/*role*/
-				jitter_filter_enable = <0>;
+				jitter_filter_enable = <1>;
+				jitter_curr_ratio = <127>;
 				accuracy_filter_enable = <0>;
 				ghost_detection_enable = <1>;
 				};

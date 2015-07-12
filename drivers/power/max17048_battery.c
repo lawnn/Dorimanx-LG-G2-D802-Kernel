@@ -224,10 +224,11 @@ static int max17048_get_capacity_from_soc(void)
 #elif defined (CONFIG_MACH_MSM8974_VU3_KR)
 	batt_soc = (batt_soc-((ref->model_data->empty)*100000))
 						/(9200-(ref->model_data->empty))*10000;
-#elif defined (CONFIG_MACH_MSM8974_Z_KR) || defined(CONFIG_MACH_MSM8974_Z_US) || defined(CONFIG_MACH_MSM8974_Z_KDDI)
+#elif defined (CONFIG_MACH_MSM8974_Z_KR) || defined(CONFIG_MACH_MSM8974_Z_US) || defined(CONFIG_MACH_MSM8974_Z_KDDI) || defined(CONFIG_MACH_MSM8974_B1_KR) || defined(CONFIG_MACH_MSM8974_B1W)
+	if(buf[0] > 0)
 	batt_soc = batt_soc/94*100+10000000;
-#elif defined(CONFIG_MACH_MSM8974_B1_KR)
-	batt_soc = batt_soc/93*100;
+#elif defined(CONFIG_MACH_MSM8974_G2_KDDI)
+	batt_soc = (batt_soc-20000000)/(94-2)*100;
 #else
 	batt_soc = batt_soc/94*100;
 #endif
@@ -426,10 +427,11 @@ static void max17048_polling_work(struct work_struct *work)
 #if defined(CONFIG_MACH_MSM8974_G2_KR) || defined(CONFIG_MACH_MSM8974_VU3_KR)
 		capacity = (capacity-((ref->model_data->empty)*100000))
 						/(9400-(ref->model_data->empty))*10000;
-#elif defined (CONFIG_MACH_MSM8974_Z_KR) || defined(CONFIG_MACH_MSM8974_Z_US) || defined(CONFIG_MACH_MSM8974_Z_KDDI)
+#elif defined (CONFIG_MACH_MSM8974_Z_KR) || defined(CONFIG_MACH_MSM8974_Z_US) || defined(CONFIG_MACH_MSM8974_Z_KDDI) || defined(CONFIG_MACH_MSM8974_B1_KR) || defined(CONFIG_MACH_MSM8974_B1W)
+		if ( buf[0] > 0)
 		capacity = capacity/94*100 + 10000000;
-#elif defined(CONFIG_MACH_MSM8974_B1_KR)
-		capacity = capacity/93*100;
+#elif defined(CONFIG_MACH_MSM8974_G2_KDDI)
+		capacity = (capacity-20000000)/(94-2)*100;
 #else
 		capacity = capacity/94*100;
 #endif
@@ -885,8 +887,10 @@ ssize_t max17048_show_capacity(struct device *dev,
 	int level = 0;
 
 	if (ref == NULL)
-		return snprintf(buf, PAGE_SIZE, "ERROR\n");
-
+	{
+		level = 100;
+		return snprintf(buf, PAGE_SIZE, "%d\n", level);
+	}
 	if (lge_power_test_flag == 1) {
 #ifdef CONFIG_MAX17048_SOC_ALERT
 		disable_irq(gpio_to_irq(ref->model_data->alert_gpio));
@@ -1075,14 +1079,9 @@ static int __devinit max17048_probe(struct i2c_client *client,
 		(smem_get_entry(SMEM_BATT_INFO, &smem_size));
 
 	if (smem_size != 0 && batt_id){
-		if(*batt_id == BATT_NOT_PRESENT) {
-			printk(KERN_INFO "[MAX17048] probe : skip for no model data\n");
-			ref = NULL;
-			return 0;
-		}
 
 #if defined(CONFIG_MACH_MSM8974_G2_KR) || defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_B1_KR)
-		else if(*batt_id == BATT_DS2704_L || *batt_id == BATT_ISL6296_C){
+		if(*batt_id == BATT_DS2704_L || *batt_id == BATT_ISL6296_C){
 			cell_info = LGC_LLL; /* LGC Battery */
 		}
 		else if(*batt_id == BATT_DS2704_C || *batt_id == BATT_ISL6296_L){
@@ -1233,6 +1232,12 @@ static int __devinit max17048_probe(struct i2c_client *client,
 		goto err_create_file_fuelrst_failed;
 	}
 #endif
+
+	if(*batt_id == BATT_NOT_PRESENT) {
+		printk(KERN_INFO "[MAX17048] probe : skip for no model data\n");
+		ref = NULL;
+		return 0;
+	}
 
 	INIT_DELAYED_WORK(&chip->work, max17048_work);
 #ifdef CONFIG_MAX17048_POLLING

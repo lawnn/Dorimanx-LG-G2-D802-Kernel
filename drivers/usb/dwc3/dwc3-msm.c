@@ -309,7 +309,7 @@ static struct delayed_work check_usb_configuration_work;
 #define USB_REDRIVER_VOL_MAX		3300000 /* uV */
 #endif
 
-/*                           */
+/* LGE_CHANGE, Need to check */
 #ifdef CONFIG_LGE_PM
 static struct dwc3_msm *context;
 #endif
@@ -2013,7 +2013,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 			mdwc->chg_state = USB_CHG_STATE_DETECTED;
 			delay = 0;
 		}
-/*                                                             */
+/* BEGIN : janghyun.baek@lge.com 2012-12-26 For cable detection*/
 #ifdef CONFIG_LGE_PM
 		lge_pm_read_cable_info();
 #ifdef CONFIG_BU52031NVX_CARKIT
@@ -2022,7 +2022,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 			carkit_set_deskdock(1);
 #endif /* CONFIG_BU52031NVX_CARKIT */
 #endif
-/*                                        */
+/* END : janghyun.baek@lge.com 2012-12-26 */
 		break;
 	case USB_CHG_STATE_PRIMARY_DONE:
 		vout = dwc3_chg_det_check_output(mdwc);
@@ -2559,7 +2559,7 @@ static irqreturn_t msm_dwc3_irq(int irq, void *data)
 {
 	struct dwc3_msm *mdwc = data;
 
-#ifdef CONFIG_MACH_MSM8974_VU3_KR
+#if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 	enum dwc3_id_state id;
 
 	id = !!irq_read_line(mdwc->pmic_id_irq);
@@ -3198,7 +3198,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, mdwc);
 
-/*                           */
+/* LGE_CHANGE, Need to check */
 #ifdef CONFIG_LGE_PM
 	context = mdwc;
 #endif
@@ -3324,7 +3324,6 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 	if(of_property_read_u32(node, "qcom,usb3_tx_deemph", &mdwc->usb3_tx_deemph) < 0) {
 			mdwc->usb3_tx_deemph = 22;
 		}
-	
 #endif
 
 	of_get_property(node, "qcom,vdd-voltage-level", &len);

@@ -396,7 +396,7 @@ struct qpnp_chg_chip {
 	int						chg_current_te;
 #endif
 #endif
-#ifdef CONFIG_MACH_MSM8974_VU3_KR
+#if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 	struct delayed_work		charging_inform_work;
 	struct delayed_work     usbin_valid_work;
 #endif
@@ -473,7 +473,7 @@ static struct of_device_id qpnp_charger_match_table[] = {
 	{}
 };
 
-/*                                                                      */
+/* BEGIN : janghyun.baek@lge.com 2013-01-25 For factory cable detection */
 #ifdef CONFIG_LGE_PM
 static struct qpnp_chg_chip *qpnp_chg;
 static unsigned int cable_type;
@@ -486,7 +486,7 @@ static bool is_factory_cable(void)
 	else
 		return 0;
 }
-/*                                        */
+/* END : janghyun.baek@lge.com 2013-01-25 */
 int pseudo_batt_set(struct pseudo_batt_info_type *info)
 {
 	struct qpnp_chg_chip *chip = qpnp_chg;
@@ -2271,7 +2271,7 @@ power_set_property_mains(struct power_supply *psy,
 		chip->ac_online = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		/*                                                                                 */
+		/* [LGE_CHANGE] kinam119.kim@lge.com, user space parameter to set iusb max current */
 		if (cur_max_user > 0)
 			chip->current_max = cur_max_user * 1000;
 		else
@@ -5538,6 +5538,17 @@ unsigned int lge_chg_cable_type(void)
 EXPORT_SYMBOL(lge_chg_cable_type);
 #endif
 
+#if defined(CONFIG_MACH_MSM8974_G2_KDDI)
+#ifdef CONFIG_LGE_PM
+static unsigned int cable_smem_size;
+int lge_get_sbl_cable_type(void)
+{
+	return cable_type;
+}
+EXPORT_SYMBOL(lge_get_sbl_cable_type);
+#endif
+#endif
+
 #ifdef CONFIG_LGE_CHARGER_TEMP_SCENARIO
 static int temp_before = 0;
 static void qpnp_monitor_batt_temp(struct work_struct *work)
@@ -5629,7 +5640,7 @@ static void qpnp_monitor_batt_temp(struct work_struct *work)
 }
 #endif
 
-#ifdef CONFIG_MACH_MSM8974_VU3_KR
+#if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 #define SBMM_BAT_FET				0x0B
 #define BAT_FET_ON	BIT(7)
 #define VIN_MIN_THR		43
@@ -6017,7 +6028,7 @@ qpnp_charger_probe(struct spmi_device *spmi)
 	INIT_DELAYED_WORK(&chip->aicl_check_work, qpnp_aicl_check_work);
 
 	if (chip->dc_chgpth_base) {
-#ifdef CONFIG_LGE_PM
+#if defined(CONFIG_LGE_PM) && !defined(CONFIG_MACH_MSM8974_G2_KDDI)
 		chip->dc_psy.name = "wireless";
 		chip->dc_psy.type = POWER_SUPPLY_TYPE_WIRELESS;
 #else
@@ -6172,7 +6183,7 @@ qpnp_charger_probe(struct spmi_device *spmi)
 	if (qpnp_chg_is_usb_chg_plugged_in(chip))
 		power_supply_set_online(chip->usb_psy, 1);
 #endif
-#ifdef CONFIG_MACH_MSM8974_VU3_KR
+#if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 	charging_information_probe(chip);
 #endif
 

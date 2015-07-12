@@ -56,6 +56,7 @@ soc {
 			*/
 		interrupts = <0 102 0>, <0 239 0>;
 		interrupt-names = "spi_irq", "spi_bam_irq"; //Keep same
+		qcom,master-id = <84>;
 			/*
 			Add Consumer and Producer Pipes
 			*/
@@ -71,10 +72,10 @@ soc {
 		#size-cells = <0>;
 		//Add following additional nodes to enable RunTime GPIO
 		//msmgpio is the parent, second # is gpio #. Third flag keep it 0.
-		gpios = <&msmgpio 48 0>, /* CLK */
-				<&msmgpio 46 0>, /* MISO */
-				<&msmgpio 45 0>; /* MOSI */
-		cs-gpios = <&msmgpio 47 0>; /* CS if this core support multiple CS add them to list */
+		qcom,gpio-clk = <&msmgpio 48 0>;
+		qcom,gpio-miso = <&msmgpio 46 0>;
+		qcom,gpio-mosi = <&msmgpio 45 0>;
+		qcom,gpio-cs0 = <&msmgpio 47 0>;
 		};
 	};
 };

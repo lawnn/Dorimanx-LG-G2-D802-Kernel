@@ -448,7 +448,7 @@ void __weak arch_enable_nonboot_cpus_end(void)
 {
 }
 
-#ifdef CONFIG_MACH_MSM8974_B1_KR
+#if defined (CONFIG_MACH_MSM8974_B1_KR) || defined (CONFIG_MACH_MSM8974_Z_KR)|| defined(CONFIG_MACH_MSM8974_B1W) || defined(CONFIG_MACH_MSM8974_Z_OPEN_COM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 #define BOOST_FREQ_TIME_MS 2000
 static struct timer_list boost_freq_timer;
 int boost_freq = 0;
@@ -462,7 +462,7 @@ static void boost_freq_timer_cb(unsigned long data)
 void __ref enable_nonboot_cpus(void)
 {
 	int cpu, error;
-#ifdef CONFIG_MACH_MSM8974_B1_KR
+#if defined (CONFIG_MACH_MSM8974_B1_KR) || defined (CONFIG_MACH_MSM8974_Z_KR)|| defined(CONFIG_MACH_MSM8974_B1W) || defined(CONFIG_MACH_MSM8974_Z_OPEN_COM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 	static int first = 0;
 
 	if (!first) {

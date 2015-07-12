@@ -6,10 +6,13 @@
   *    Include header files
   */
 #include "snfc_uart_collision_control.h"
+#include <mach/board_lge.h>
 
 /*
 *	Define
 */
+#define KOTO_STATE_AVAILABLE_POLL_SLEEP_VALUE_NORMAL 11
+#define KOTO_STATE_AVAILABLE_POLL_SLEEP_VALUE_FASTER 12
 
 /*
 *	Internal definitions
@@ -22,12 +25,14 @@ _e_snfc_uart_status g_uartcollisoncontrol = UART_STATUS_KOTO_OFF;
 static int gpio_init = 0;
 static int forced_hsel_up_flag=0;
 static int forced_pon_up_flag=0;	
-static int koto_abnormal=0;
+int koto_state=0;
 static int autopoll_status = 0;
 
 int snfc_poweroff_flag=0;
 
 extern struct snfc_gp snfc_gpios;
+extern struct snfc_i2c_dev snfc_i2c_dev;
+
 /* 
  *	Function definitions
  */
@@ -40,7 +45,10 @@ extern struct snfc_gp snfc_gpios;
 void __snfc_uart_control_set_uart_status(_e_snfc_uart_status uart_status)
 {
 	_e_snfc_uart_status current_status = g_uartcollisoncontrol;
-	
+
+       if ( current_status == UART_STATUS_FOR_FELICA && uart_status != UART_STATUS_FOR_FELICA )
+              snfc_avali_poll_felica_status();
+    
 	if(current_status == uart_status)
 		return;
 	
@@ -80,22 +88,16 @@ static int snfc_uart_control_open(struct inode *inode, struct file *fp)
 
     __snfc_uart_control_set_uart_status(UART_STATUS_READY);
 
-        if(gpio_init ==0)
-        {
-            rc = gpio_request(snfc_gpios.gpio_hvdd,"snfc_hvdd");
-            if(rc){
-                SNFC_DEBUG_MSG("[snfc_intu_poll] gpio_request snfc_hvdd fail\n");
-            }
-            snfc_gpio_write(snfc_gpios.gpio_hvdd, GPIO_HIGH_VALUE);
-/*
-            rc = gpio_request(snfc_gpios.gpio_uicc_con, "snfc_uicc_con");
-            {
-                SNFC_DEBUG_MSG("[snfc_driver] gpio_request snfc_uicc_con fail\n");
-            }
-            snfc_gpio_write(snfc_gpios.gpio_uicc_con, GPIO_LOW_VALUE);
-*/
-            gpio_init = 1;                
+    if(gpio_init ==0)
+    {
+        rc = gpio_request(snfc_gpios.gpio_hvdd,"snfc_hvdd");
+        if(rc){
+            SNFC_DEBUG_MSG("[snfc_intu_poll] gpio_request snfc_hvdd fail\n");
         }
+        snfc_gpio_write(snfc_gpios.gpio_hvdd, GPIO_HIGH_VALUE);
+
+        gpio_init = 1;                
+    }
 
     SNFC_DEBUG_MSG_LOW("[snfc_uart_control] snfc_uart_control_open - end \n");
 
@@ -134,14 +136,21 @@ static long snfc_uart_control_ioctl(struct file *flip, unsigned int cmd, unsigne
 	//int i,err;
 	int size;
 	_e_snfc_uart_status current_status;
+       int break_cnt;
 	int autopoll_wait_cnt;
-	int break_cnt;
 	unsigned char write_buf = 0x00/*, read_buf = 0x00*/;
 	int rc =0;
-	
+	int snfcbootmode;
+    
 	size = _IOC_SIZE(cmd);
 	SNFC_DEBUG_MSG_MIDDLE("[snfc_uart_control] snfc_uart_control_ioctl - start,cmd =%d\n", cmd);
-		
+
+	if(cmd == IOCTL_SNFC_READ_BOOTMODE){
+	        snfcbootmode = lge_get_boot_mode();
+	        SNFC_DEBUG_MSG("[snfc_uart_control] read boot mode %d \n",snfcbootmode);
+	         // 0 : NORMAL, 1 : CHARGER, 2 : CHARGERLOGO, 3 : FACTORY, 4 : FACTORY2, 5 : PIFBOOT, 6 : PIFBOOT2, 7 : MINIOS
+	        return snfcbootmode;
+	}         
 	current_status = __snfc_uart_control_get_uart_status();
 	if( current_status == UART_STATUS_FOR_FELICA )
 	{
@@ -160,10 +169,10 @@ static long snfc_uart_control_ioctl(struct file *flip, unsigned int cmd, unsigne
 			snfc_gpio_write(snfc_gpios.gpio_hsel, GPIO_HIGH_VALUE);			
 			snfc_gpio_write(snfc_gpios.gpio_pon, GPIO_HIGH_VALUE);
 			mdelay(10); 
-            SNFC_DEBUG_MSG_LOW("[snfc_uart_control] hsel %d, pon %d\n",
-                snfc_gpios.gpio_hsel,snfc_gpios.gpio_pon);
-            SNFC_DEBUG_MSG_LOW("[snfc_driver] GPIO_SNFC_PON = %d, GPIO_SNFC_HSEL = %d, GPIO_SNFC_HBDD = %d\n",
-                snfc_gpio_read(snfc_gpios.gpio_pon),snfc_gpio_read(snfc_gpios.gpio_hsel),snfc_gpio_read(snfc_gpios.gpio_hvdd)  );             
+	              SNFC_DEBUG_MSG_LOW("[snfc_uart_control] hsel %d, pon %d\n",
+	                snfc_gpios.gpio_hsel,snfc_gpios.gpio_pon);
+	              SNFC_DEBUG_MSG_LOW("[snfc_driver] GPIO_SNFC_PON = %d, GPIO_SNFC_HSEL = %d, GPIO_SNFC_HBDD = %d\n",
+	                snfc_gpio_read(snfc_gpios.gpio_pon),snfc_gpio_read(snfc_gpios.gpio_hsel),snfc_gpio_read(snfc_gpios.gpio_hvdd)  );             
 			SNFC_DEBUG_MSG_LOW("[snfc_uart_control] IOCTL_SNFC_START_SETTING - end\n");
 			break;
 			
@@ -261,7 +270,7 @@ static long snfc_uart_control_ioctl(struct file *flip, unsigned int cmd, unsigne
 			SNFC_DEBUG_MSG_MIDDLE("[snfc_uart_control] CEN = High (UNLOCK) \n");
 			write_buf = 0x81; // set unlock  
 			//mutex_lock(&nfc_cen_mutex);	
-			rc = snfc_i2c_write(0x02, &write_buf, 1);
+			rc = snfc_i2c_write(0x02, &write_buf, 1, snfc_i2c_dev.client);
 			//mutex_unlock(&nfc_cen_mutex);   
 			break;
 			
@@ -270,9 +279,14 @@ static long snfc_uart_control_ioctl(struct file *flip, unsigned int cmd, unsigne
 			SNFC_DEBUG_MSG_MIDDLE("[snfc_uart_control] CEN = Low (LOCK) \n");
 			write_buf = 0x80; // set lock
 			//mutex_lock(&nfc_cen_mutex);
-			rc = snfc_i2c_write(0x02, &write_buf, 1);
+			rc = snfc_i2c_write(0x02, &write_buf, 1, snfc_i2c_dev.client);
 			//mutex_unlock(&nfc_cen_mutex);  			
 			break;
+            
+	       case IOCTL_SNFC_HVDD_DOWN_SET:
+	             SNFC_DEBUG_MSG("snfc_uart_control] before HVDD Down\n");
+	             snfc_hvdd_wait_rfs_low();
+	             break;
 			
 		case IOCTL_SNFC_END :
 			SNFC_DEBUG_MSG_LOW("[snfc_uart_control] IOCTL_SNFC_END - start\n");
@@ -320,7 +334,7 @@ static int snfc_uart_control_read(struct file *pf, char *pbuf, size_t size, loff
 		
 	SNFC_DEBUG_MSG_LOW("[snfc_uart_control] snfc_uart_control_read - start \n");
 	
-	current_status = koto_abnormal;	
+	current_status = koto_state;	
 	
 	rc = copy_to_user((void*)pbuf, (void*)&current_status, size);
 	if(rc)
@@ -329,7 +343,7 @@ static int snfc_uart_control_read(struct file *pf, char *pbuf, size_t size, loff
 		return rc;
 	}
 
-	SNFC_DEBUG_MSG_LOW("[snfc_uart_control] snfc_uart_control_read :koto_abnormal=%d - end \n",koto_abnormal);
+	SNFC_DEBUG_MSG_LOW("[snfc_uart_control] snfc_uart_control_read :koto_abnormal=%d - end \n",koto_state);
 	
 	return size;
 }
@@ -353,9 +367,9 @@ static int snfc_uart_control_write(struct file *pf, const char *pbuf, size_t siz
 	}
 	
 	//if(autopoll_status == 1)
-		koto_abnormal = new_status;	
-
-	SNFC_DEBUG_MSG_LOW("[snfc_uart_control] snfc_uart_control_write - end:koto_abnormal=%d \n",koto_abnormal);
+		koto_state = new_status;	
+        
+	SNFC_DEBUG_MSG_LOW("[snfc_uart_control] snfc_uart_control_write - end:koto_abnormal=%d \n",koto_state);
 
 	return size;
 }
@@ -386,8 +400,9 @@ int snfc_uart_control_probe(struct device_node *np)
     snfc_gpios.gpio_pon = of_get_named_gpio_flags(np, "sony,pon-gpio", 0, NULL);
     snfc_gpios.gpio_hvdd = of_get_named_gpio_flags(np, "sony,hvdd-gpio", 0, NULL);
     snfc_gpios.gpio_uicc_con = of_get_named_gpio_flags(np, "sony,uicc_con", 0, NULL);
-    //SNFC_DEBUG_MSG("[snfc_driver] of_get_named_gpio_flags gpio_hsel %d gpio_pon %d gpio_hvdd %d\n",
-    //    snfc_gpios.gpio_hsel,snfc_gpios.gpio_pon,snfc_gpios.gpio_hvdd );     
+
+    SNFC_DEBUG_MSG("[snfc_driver] of_get_named_gpio_flags gpio_hsel %d gpio_pon %d gpio_hvdd %d\n",
+    snfc_gpios.gpio_hsel,snfc_gpios.gpio_pon,snfc_gpios.gpio_hvdd );
 
     rc = gpio_request(snfc_gpios.gpio_hsel, "snfc_hsel");
     if (rc)
@@ -401,12 +416,13 @@ int snfc_uart_control_probe(struct device_node *np)
     }
 
     SNFC_DEBUG_MSG_LOW("[snfc_driver] GPIO_SNFC_PON = %d, GPIO_SNFC_HSEL = %d\n",
-        snfc_gpio_read(snfc_gpios.gpio_pon),snfc_gpio_read(snfc_gpios.gpio_hsel) ); 
+    snfc_gpio_read(snfc_gpios.gpio_pon),snfc_gpio_read(snfc_gpios.gpio_hsel) ); 
 
     rc = gpio_request(snfc_gpios.gpio_uicc_con, "snfc_uicc_con");
     if(rc){
         SNFC_DEBUG_MSG("[snfc_driver] gpio_request snfc_uicc_con fail\n");
-    } 
+    }
+	
     snfc_gpio_open(snfc_gpios.gpio_uicc_con,GPIO_DIRECTION_OUT,GPIO_LOW_VALUE);
 
     /* register the device file */

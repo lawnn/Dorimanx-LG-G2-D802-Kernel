@@ -176,7 +176,7 @@ static struct dbs_tuners {
 	.debug_mask=0,
 };
 
-#ifdef CONFIG_MACH_MSM8974_B1_KR
+#if defined (CONFIG_MACH_MSM8974_B1_KR) || defined (CONFIG_MACH_MSM8974_Z_KR)|| defined(CONFIG_MACH_MSM8974_B1W) || defined(CONFIG_MACH_MSM8974_Z_OPEN_COM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 extern int boost_freq;
 #endif
 
@@ -995,7 +995,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 	cpufreq_notify_utilization(policy, load_at_max_freq);
 
-#ifdef CONFIG_MACH_MSM8974_B1_KR
+#if defined (CONFIG_MACH_MSM8974_B1_KR) || defined (CONFIG_MACH_MSM8974_Z_KR)|| defined(CONFIG_MACH_MSM8974_B1W) || defined(CONFIG_MACH_MSM8974_Z_OPEN_COM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 	if (boost_freq == 2) {
 		if(policy->cur < policy->max){
 			dbs_freq_increase(policy, policy->max);
@@ -1346,7 +1346,7 @@ static void dbs_input_event(struct input_handle *handle, unsigned int type,
 		return;
 	}
 
-#ifdef CONFIG_MACH_MSM8974_B1_KR
+#if defined (CONFIG_MACH_MSM8974_B1_KR) || defined (CONFIG_MACH_MSM8974_Z_KR)|| defined(CONFIG_MACH_MSM8974_B1W) || defined(CONFIG_MACH_MSM8974_Z_OPEN_COM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 	if (boost_freq == 1) {
 		if (!strcmp((char*)(handle->dev->name), "qpnp_pon")){
 			printk(KERN_ERR "ws->name=%s, boost_Freq=%d\n", handle->dev->name, boost_freq);

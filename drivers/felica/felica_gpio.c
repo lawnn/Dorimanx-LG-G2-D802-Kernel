@@ -117,26 +117,7 @@ int felica_gpio_read(int gpionum)
 */
 int felica_get_rfs_gpio_num(void)
 {
-/* If it has different GPIO number each HW version, please use this route. */
-#ifdef CONFIG_LGE_FELICA_NFC_DCM
-  int gpionum = GPIO_FELICA_RFS;
-
-  if (lge_get_board_revno() < HW_REV_D)
-  {
-    gpionum = GPIO_FELICA_RFS;
-  }
-  else
-  {
-    gpionum = GPIO_FELICA_RFS_REV_D;  
-  }
-
-	#ifdef FEATURE_DEBUG_LOW
-	FELICA_DEBUG_MSG("[FELICA_GPIO] felica_get_rfs_gpio_num(%d) \n",gpionum);
-	#endif
-	return gpionum;	
-#else
-	return GPIO_FELICA_RFS;
-#endif
+  return GPIO_FELICA_RFS;
 }
 
 /*
@@ -146,23 +127,6 @@ int felica_get_rfs_gpio_num(void)
 */
 int felica_get_int_gpio_num(void)
 {
-/* If it has different GPIO number each HW version, please use this route. */	
-#ifdef CONFIG_LGE_FELICA_NFC_DCM
-  int gpionum = GPIO_FELICA_INT;
+  return GPIO_FELICA_INT;
 
-  if (lge_get_board_revno() < HW_REV_D)
-  {
-    gpionum = GPIO_FELICA_INT;
-  }
-  else
-  {
-    gpionum = GPIO_FELICA_INT_REV_D;  
-  }
-	#ifdef FEATURE_DEBUG_LOW
-	FELICA_DEBUG_MSG("[FELICA_GPIO] felica_get_rws_gpio_num(%d) \n",gpionum);
-	#endif
-	return gpionum;
-#else	
-	return GPIO_FELICA_INT;
-#endif
 }

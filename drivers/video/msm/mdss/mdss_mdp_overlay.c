@@ -46,10 +46,10 @@
 #define QMC_PATCH
 #endif
 #ifdef CONFIG_OLED_SUPPORT
-/*           
-                                                         
-                                                                   
-                                 
+/* LGE_CHANGE
+ * This is for power on/off test patch from case#01266650
+ * Patch to prevent kernel crash occur at mdss_mdp_video_line_count
+ * 2013-08-09, isaac.park@lge.com
  */
 #define QMC_POWERONOFF_PATCH
 #endif
@@ -277,11 +277,11 @@ static int __mdp_pipe_tune_perf(struct mdss_mdp_pipe *pipe)
 	int rc;
 
 #ifdef CONFIG_OLED_SUPPORT
-	/*                 
-                                   
-                                                                        
-                                    
-  */
+	/* LGE_CHANGE_START
+	 * hyuk.myeong@lge.com, 2013.08.27
+	 * To avoid under-run issue for polaris office in Z_HD (much downscale)
+	 * work with QCT, case No. 01276682
+	 */
 	if (unlikely(mdata->has_decimation && pipe->src_fmt->is_yuv &&
 		((pipe->src.w > 1280) && ((pipe->dst.w << 2) < pipe->src.w)))) {
 
@@ -289,7 +289,7 @@ static int __mdp_pipe_tune_perf(struct mdss_mdp_pipe *pipe)
 			(pipe->horz_deci > 0 && pipe->horz_deci < MAX_DECIMATION))
 			pipe->vert_deci++;
 	}
-	/*                */
+	/* LGE_CHANGE_END */
 #endif
 	for (;;) {
 		rc = mdss_mdp_perf_calc_pipe(pipe, &perf);
@@ -600,7 +600,6 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	}
 
 	pipe->params_changed++;
-	pipe->has_buf = 0;
 
 	req->vert_deci = pipe->vert_deci;
 
@@ -1005,11 +1004,11 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 		struct mdss_mdp_data *buf;
 
 #if defined(CONFIG_G2_LGD_PANEL) || defined(CONFIG_B1_LGD_PANEL)
-		/*           
-                                                                
-                                                 
-                                     
-   */
+		/* LGE_CHANGE
+		 * Change code to make sure that the pipes are set up properly
+		 * even for the first frame. From Case#01343200
+		 * 2013-11-06, minjong.gong@lge.com
+		 */
 		if (ctl->play_cnt == 0)
 			pipe->params_changed++;
 #endif
@@ -1058,11 +1057,11 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 			buf = &pipe->back_buf;
 		} else if (ctl->play_cnt == 0 && pipe->front_buf.num_planes) {
 #if defined(CONFIG_G2_LGD_PANEL) || defined(CONFIG_B1_LGD_PANEL)
-			/*           
-                                                                 
-                                                  
-                                      
-    */
+			/* LGE_CHANGE
+			 * Change code to make sure that the pipes are set up properly
+			 * even for the first frame. From Case#01343200
+			 * 2013-11-06, minjong.gong@lge.com
+			 */
 			buf = &pipe->front_buf;
 #else
 			pipe->params_changed++;
@@ -1289,6 +1288,9 @@ static int mdss_mdp_overlay_queue(struct msm_fb_data_type *mfd,
 
 	pr_debug("ov queue pnum=%d\n", pipe->num);
 
+	if (pipe->flags & MDP_SOLID_FILL)
+		pr_warn("Unexpected buffer queue to a solid fill pipe\n");
+
 	flags = (pipe->flags & MDP_SECURE_OVERLAY_SESSION);
 	flags |= (pipe->flags & MDP_SECURE_DISPLAY_OVERLAY_SESSION);
 
@@ -1303,7 +1305,6 @@ static int mdss_mdp_overlay_queue(struct msm_fb_data_type *mfd,
 	if (IS_ERR_VALUE(ret)) {
 		pr_err("src_data pmem error\n");
 	}
-	pipe->has_buf = 1;
 	mdss_mdp_pipe_unmap(pipe);
 
 	return ret;
@@ -1546,7 +1547,6 @@ static void mdss_mdp_overlay_pan_display(struct msm_fb_data_type *mfd)
 	buf->p[0].addr += offset;
 	buf->p[0].len = fbi->fix.smem_len - offset;
 	buf->num_planes = 1;
-	pipe->has_buf = 1;
 	mdss_mdp_pipe_unmap(pipe);
 
 	if (fbi->var.xres > MAX_MIXER_WIDTH || mfd->split_display) {
@@ -1561,7 +1561,6 @@ static void mdss_mdp_overlay_pan_display(struct msm_fb_data_type *mfd)
 			goto pan_display_error;
 		}
 		pipe->back_buf = *buf;
-		pipe->has_buf = 1;
 		mdss_mdp_pipe_unmap(pipe);
 	}
 	mutex_unlock(&mdp5_data->ov_lock);

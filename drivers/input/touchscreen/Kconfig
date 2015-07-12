@@ -1090,7 +1090,7 @@ config LGE_VU3_TOUCHSCREEN
 	help
 	  For difference of Z-prj touch
 	  - its own FW version.
-	  
+
 config SECURE_TOUCH
 	bool "Secure Touch"
 	depends on TOUCHSCREEN_ATMEL_MXT
