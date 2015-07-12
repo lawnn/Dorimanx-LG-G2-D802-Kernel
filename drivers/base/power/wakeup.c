@@ -377,7 +377,7 @@ EXPORT_SYMBOL_GPL(device_set_wakeup_enable);
 static void wakeup_source_activate(struct wakeup_source *ws)
 {
 	unsigned int cec;
-#if defined (CONFIG_MACH_MSM8974_B1_KR) || defined (CONFIG_MACH_MSM8974_Z_KR)|| defined(CONFIG_MACH_MSM8974_B1W) || defined(CONFIG_MACH_MSM8974_Z_OPEN_COM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
+#if 1 /* Boost CPU When wakeup */
 	extern int boost_freq;
 	extern bool suspend_marker_entry;
 	unsigned int cnt, inpr;
@@ -408,7 +408,7 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 
 	trace_wakeup_source_activate(ws->name, cec);
 
-#if defined (CONFIG_MACH_MSM8974_B1_KR) || defined (CONFIG_MACH_MSM8974_Z_KR)|| defined(CONFIG_MACH_MSM8974_B1W) || defined(CONFIG_MACH_MSM8974_Z_OPEN_COM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
+#if 1 /* Boost CPU When wakeup */
 	if (suspend_marker_entry) {
 		if (!wakeup_pending) {
 			if (boost_freq == 1) {

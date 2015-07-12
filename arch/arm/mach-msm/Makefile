@@ -1,5 +1,9 @@
 CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
 
+# GCC 4.8+ fix.
+CFLAGS_cpubw-krait.o += -w
+CFLAGS_alucard_hotplug.o += -w
+
 obj-y += io.o dma.o memory.o
 ifndef CONFIG_ARM_ARCH_TIMER
 obj-y += timer.o
@@ -124,12 +128,10 @@ obj-$(CONFIG_ARCH_MSM8625) += nand_partitions.o
 obj-$(CONFIG_ARCH_MSM7X27A) += nand_partitions.o
 obj-$(CONFIG_MSM_SDIO_TTY) += sdio_tty.o
 obj-$(CONFIG_MSM_SMD_TTY) += smd_tty.o
-obj-$(CONFIG_MSM_SMD_QMI) += smd_qmi.o
 obj-$(CONFIG_MSM_SMD_PKT) += smd_pkt.o
 obj-$(CONFIG_MSM_SDIO_CMUX) += sdio_cmux.o
 obj-$(CONFIG_MSM_DSPS) += msm_dsps.o
 obj-$(CONFIG_MSM_SDIO_CTL) += sdio_ctl.o
-obj-$(CONFIG_MSM_SMD_NMEA) += smd_nmea.o
 obj-$(CONFIG_MSM_RESET_MODEM) += reset_modem.o
 obj-$(CONFIG_MSM_IPC_ROUTER_SMD_XPRT) += ipc_router_smd_xprt.o
 obj-$(CONFIG_MSM_IPC_ROUTER_HSIC_XPRT) += ipc_router_hsic_xprt.o
@@ -448,4 +450,4 @@ obj-$(CONFIG_HAS_MACH_MEMUTILS) += memutils/
 obj-$(CONFIG_MSM_CPUFREQ_LIMITER) += cpufreq_limit.o
 obj-$(CONFIG_FORCE_FAST_CHARGE) += fastchg.o
 obj-$(CONFIG_ALUCARD_HOTPLUG) += alucard_hotplug.o
-obj-$(CONFIG_INTELLI_PLUG) += intelli_plug.o
+obj-$(CONFIG_INTELLI_HOTPLUG) += intelli_plug.o

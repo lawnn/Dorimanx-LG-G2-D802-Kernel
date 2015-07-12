@@ -73,6 +73,15 @@ void msm_slim_put_ctrl(struct msm_slim_ctrl *dev)
 #endif
 }
 
+void msm_slim_vote_func(struct slim_device *gen0_client)
+{
+	struct msm_slim_ctrl *dev = slim_get_ctrldata(gen0_client->ctrl);
+	pr_info("%s()", __func__);
+	msm_slim_get_ctrl(dev);
+	msm_slim_put_ctrl(dev);
+}
+EXPORT_SYMBOL(msm_slim_vote_func);
+
 irqreturn_t msm_slim_port_irq_handler(struct msm_slim_ctrl *dev, u32 pstat)
 {
 	int i;
@@ -1213,6 +1222,8 @@ qmi_handle_create_failed:
 
 void msm_slim_qmi_exit(struct msm_slim_ctrl *dev)
 {
+	if (!dev->qmi.handle || !dev->qmi.task)
+		return;
 	qmi_handle_destroy(dev->qmi.handle);
 	flush_kthread_worker(&dev->qmi.kworker);
 	kthread_stop(dev->qmi.task);
