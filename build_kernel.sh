@@ -165,6 +165,11 @@ else
         echo "not dorimanx system detected, setting $NR_CPUS build threads"
 fi;
 
+# Copy needed dtc binary to system to finish the build.
+if [ ! -e /bin/dtc ]; then
+	cp -a tools/dtc-binary/dtc /bin/;
+fi;
+
 # build zImage
 time make -j ${NR_CPUS}
 
@@ -197,8 +202,23 @@ else
 	fi;
 fi;
 
-cp -a ../LG-G2-D802-Ramdisk/* ../ramdisk-tmp/
-rm -rf ../ramdisk-tmp/.git
+# copy all ROOT ramdisk files to ramdisk temp dir.
+cp -a ../LG-G2-D802-Ramdisk/ROOT-RAMDISK/* ../ramdisk-tmp/
+
+# copy needed branch files to ramdisk temp dir.
+if [ "$BUILD_800" == "1" ]; then
+	cp -a ../LG-G2-D802-Ramdisk/D800-RAMDISK/* ../ramdisk-tmp/
+elif [ "$BUILD_801" == "1" ]; then
+	cp -a ../LG-G2-D802-Ramdisk/D801-RAMDISK/* ../ramdisk-tmp/
+elif [ "$BUILD_802" == "1" ]; then
+	cp -a ../LG-G2-D802-Ramdisk/D802-RAMDISK/* ../ramdisk-tmp/
+elif [ "$BUILD_803" == "1" ]; then
+	cp -a ../LG-G2-D802-Ramdisk/D803-RAMDISK/* ../ramdisk-tmp/
+elif [ "$BUILD_LS_980" == "1" ]; then
+	cp -a ../LG-G2-D802-Ramdisk/LS980-RAMDISK/* ../ramdisk-tmp/
+elif [ "$BUILD_VS_980" == "1" ]; then
+	cp -a ../LG-G2-D802-Ramdisk/VS980-RAMDISK/* ../ramdisk-tmp/
+fi;
 
 for i in $(find "$KERNELDIR" -name '*.ko'); do
         cp -av "$i" ../ramdisk-tmp/lib/modules/;

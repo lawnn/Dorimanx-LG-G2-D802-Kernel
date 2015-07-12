@@ -1959,12 +1959,12 @@ config MSM_CPUFREQ_LIMITER
 
 	  If in doubt, say Y.
 
-config ALUCARD_HOTPLUG_THERMAL
-	bool "Enable alucard-hotplug thermal control"
-	depends on ALUCARD_HOTPLUG
+config ALUCARD_HOTPLUG_USE_CPU_UTIL
+	bool "Enable alucard-hotplug cpu statistics utilization"
+	depends on (ALUCARD_HOTPLUG)
 	default n
 	help
-	  Alucard-hotplug thermal control
+	  Alucard-hotplug cpu statistics utilization
 
 config MSM_AVS_HW
 	bool "Enable Adaptive Voltage Scaling (AVS)"
@@ -2568,6 +2568,12 @@ config MSM_RUN_QUEUE_STATS
 	 This option enalbes statistics collection on Run Queue. A daemon
          in user mode, called MPDecision will be using this data to decide
          on when to switch off/on the other cores.
+
+config MSM_RUN_QUEUE_STATS_USE_CPU_UTIL
+	bool "Enable collection and exporting of MSM Run Queue stats to userspace"
+	depends on (MSM_RUN_QUEUE_STATS)
+	help
+	 This option enable cpu utilization
 
 config MSM_STANDALONE_POWER_COLLAPSE
        bool "Enable standalone power collapse"

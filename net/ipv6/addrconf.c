@@ -928,8 +928,11 @@ retry:
 	 * Lifetime is greater than REGEN_ADVANCE time units.  In particular,
 	 * an implementation must not create a temporary address with a zero
 	 * Preferred Lifetime.
+	 * Use age calculation as in addrconf_verify to avoid unnecessary
+	 * temporary addresses being generated.
 	 */
-	if (tmp_prefered_lft <= regen_advance) {
+	age = (now - tmp_tstamp + ADDRCONF_TIMER_FUZZ_MINUS) / HZ;
+	if (tmp_prefered_lft <= regen_advance + age) {
 		in6_ifa_put(ifp);
 		in6_dev_put(idev);
 		ret = -1;
@@ -1309,7 +1312,7 @@ static int ipv6_count_addresses(struct inet6_dev *idev)
 }
 
 int ipv6_chk_addr(struct net *net, const struct in6_addr *addr,
-		  struct net_device *dev, int strict)
+		  const struct net_device *dev, int strict)
 {
 	struct inet6_ifaddr *ifp;
 	struct hlist_node *node;

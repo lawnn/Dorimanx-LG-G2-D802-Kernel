@@ -26,9 +26,8 @@
 
 #define MSM_HOTPLUG		"msm_hotplug"
 #define HOTPLUG_ENABLED		0
-#define DEFAULT_UPDATE_RATE	HZ / 10
-#define START_DELAY		HZ * 20
-#define NUM_LOAD_LEVELS		5
+#define DEFAULT_UPDATE_RATE	100 / 10
+#define START_DELAY		100 * 20
 #define MIN_INPUT_INTERVAL	150 * 1000L
 #define DEFAULT_HISTORY_SIZE	10
 #define DEFAULT_DOWN_LOCK_DUR	1000
@@ -48,11 +47,11 @@ do { 				\
 
 static struct cpu_hotplug {
 	unsigned int msm_enabled;
-	unsigned int suspend_freq;
 	unsigned int target_cpus;
 	unsigned int min_cpus_online;
 	unsigned int max_cpus_online;
 	unsigned int cpus_boosted;
+	unsigned int offline_load;
 	unsigned int down_lock_dur;
 	u64 boost_lock_dur;
 	u64 last_input;
@@ -140,9 +139,10 @@ struct load_thresh_tbl {
 static struct load_thresh_tbl load[] = {
 	LOAD_SCALE(400, 0),
 	LOAD_SCALE(50, 0),
-	LOAD_SCALE(100, 40),
-	LOAD_SCALE(150, 80),
-	LOAD_SCALE(410, 140),
+	LOAD_SCALE(80, 40),
+	LOAD_SCALE(120, 70),
+	LOAD_SCALE(410, 110),
+	LOAD_SCALE(0, 0),
 };
 
 static void apply_down_lock(unsigned int cpu)
@@ -175,17 +175,25 @@ static int get_lowest_load_cpu(void)
 {
 	int cpu, lowest_cpu = 0;
 	unsigned int lowest_load = UINT_MAX;
-	unsigned int load[NR_CPUS];
+	unsigned int cpu_load[NR_CPUS];
+	unsigned int proj_load;
 
 	for_each_online_cpu(cpu) {
 		if (cpu == 0)
 			continue;
-		load[cpu] = report_avg_load_cpu(cpu);
-		if (load[cpu] < lowest_load) {
-			lowest_load = load[cpu];
+		cpu_load[cpu] = report_avg_load_cpu(cpu);
+		if (cpu_load[cpu] < lowest_load) {
+			lowest_load = cpu_load[cpu];
 			lowest_cpu = cpu;
 		}
 	}
+
+	proj_load = stats.current_load - lowest_load;
+	if (proj_load > load[stats.online_cpus - 1].up_threshold)
+		return -EPERM;
+
+	if (hotplug.offline_load && lowest_load >= hotplug.offline_load)
+		return -EPERM;
 
 	return lowest_cpu;
 }
@@ -287,7 +295,7 @@ static void msm_hotplug_work(struct work_struct *work)
 		goto reschedule;
 	}
 
-	for (i = stats.min_cpus; i < NUM_LOAD_LEVELS; i++) {
+	for (i = stats.min_cpus; load[i].up_threshold; i++) {
 		if (cur_load <= load[i].up_threshold
 		    && cur_load > load[i].down_threshold) {
 			target = i;
@@ -337,11 +345,10 @@ static void hotplug_input_event(struct input_handle *handle, unsigned int type,
 	u64 now = ktime_to_us(ktime_get());
 
 	hotplug.last_input = now;
-
-	if (num_online_cpus() >= hotplug.cpus_boosted)
+	if (now - last_boost_time < MIN_INPUT_INTERVAL)
 		return;
 
-	if (now - last_boost_time < MIN_INPUT_INTERVAL)
+	if (num_online_cpus() >= hotplug.cpus_boosted)
 		return;
 
 	dprintk("%s: online_cpus: %u boosted\n", MSM_HOTPLUG,
@@ -522,7 +529,7 @@ static ssize_t show_load_levels(struct device *dev,
 	if (!buf)
 		return -EINVAL;
 
-	for (i = 0; i < NUM_LOAD_LEVELS; i++) {
+	for (i = 0; load[i].up_threshold; i++) {
 		len += sprintf(buf + len, "%u ", i);
 		len += sprintf(buf + len, "%u ", load[i].up_threshold);
 		len += sprintf(buf + len, "%u\n", load[i].down_threshold);
@@ -656,6 +663,29 @@ static ssize_t store_cpus_boosted(struct device *dev,
 	return count;
 }
 
+static ssize_t show_offline_load(struct device *dev,
+				 struct device_attribute *msm_hotplug_attrs,
+				 char *buf)
+{
+	return sprintf(buf, "%u\n", hotplug.offline_load);
+}
+
+static ssize_t store_offline_load(struct device *dev,
+				  struct device_attribute *msm_hotplug_attrs,
+				  const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1)
+		return -EINVAL;
+
+	hotplug.offline_load = val;
+
+	return count;
+}
+
 static ssize_t show_current_load(struct device *dev,
 				 struct device_attribute *msm_hotplug_attrs,
 				 char *buf)
@@ -676,6 +706,7 @@ static DEVICE_ATTR(min_cpus_online, 644, show_min_cpus_online,
 static DEVICE_ATTR(max_cpus_online, 644, show_max_cpus_online,
 		   store_max_cpus_online);
 static DEVICE_ATTR(cpus_boosted, 644, show_cpus_boosted, store_cpus_boosted);
+static DEVICE_ATTR(offline_load, 644, show_offline_load, store_offline_load);
 static DEVICE_ATTR(current_load, 444, show_current_load, NULL);
 
 static struct attribute *msm_hotplug_attrs[] = {
@@ -688,6 +719,7 @@ static struct attribute *msm_hotplug_attrs[] = {
 	&dev_attr_min_cpus_online.attr,
 	&dev_attr_max_cpus_online.attr,
 	&dev_attr_cpus_boosted.attr,
+	&dev_attr_offline_load.attr,
 	&dev_attr_current_load.attr,
 	NULL,
 };
