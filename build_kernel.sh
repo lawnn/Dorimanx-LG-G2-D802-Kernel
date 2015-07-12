@@ -179,6 +179,24 @@ time make modules -j ${NR_CPUS} || exit 1
 # move the compiled zImage and modules into the READY-KERNEL working directory
 echo "Move compiled objects........"
 
+# Check that RAMDISK is for this Branch. and check if need to push changes before switch to needed branch.
+
+RAMDISK_BRANCH=$(git -C ../LG-G2-D802-Ramdisk/ commit | grep "origin/kitkat-ramdisk" | wc -l);
+RAMDISK_NOT_SAVED=$(git -C ../LG-G2-D802-Ramdisk/ commit | grep "Changes not staged for commit" | wc -l);
+
+if [ "$RAMDISK_BRANCH" == "1" ]; then
+	echo "Ram Disk is in the right branch!";
+else
+	if [ "$RAMDISK_NOT_SAVED" != "1" ]; then
+		git -C ../LG-G2-D802-Ramdisk/ checkout kitkat-ramdisk;
+		echo -e "\e[1;31mRamDisk Switched to kitkat-ramdisk Branch!\e[m"
+	else
+		echo -e "\e[1;31mRamDisk has to be SAVED (commited) before switching to kitkat-ramdisk Branch\e[m";
+		echo -e "\e[1;31mKernel Build Script exit! please (commit/Reset changes) and build again.\e[m";
+		exit 1;
+	fi;
+fi;
+
 cp -a ../LG-G2-D802-Ramdisk/* ../ramdisk-tmp/
 rm -rf ../ramdisk-tmp/.git
 
@@ -203,8 +221,8 @@ if [ -e "$KERNELDIR"/arch/arm/boot/zImage ]; then
 	mv ramdisk.gz READY-KERNEL/boot
 
 	# create the dt.img from the compiled device files, necessary for msm8974 boot images
-#	echo "Create dt.img................"
-#	./scripts/dtbTool -v -s 2048 -o READY-KERNEL/boot/dt.img arch/arm/boot/
+	echo "Create dt.img................"
+	./scripts/dtbTool -v -s 2048 -o READY-KERNEL/boot/dt.img arch/arm/boot/
 
 	if [ -e /usr/bin/python3 ]; then
 		rm /usr/bin/python
@@ -221,9 +239,8 @@ if [ -e "$KERNELDIR"/arch/arm/boot/zImage ]; then
 	base=0x00000000
 	offset=0x05000000
 	tags_addr=0x04800000
-	cmd_line="console=ttyHSL0,115200,n8 androidboot.hardware=g2 user_debug=31 msm_rtb.filter=0x0"
-#	./mkbootimg --kernel zImage --ramdisk ramdisk.gz --cmdline "$cmd_line" --base $base --offset $offset --tags-addr $tags_addr --pagesize 2048 --dt dt.img -o newboot.img
-	./mkbootimg --kernel zImage --ramdisk ramdisk.gz --cmdline "$cmd_line" --base $base --offset $offset --tags-addr $tags_addr --pagesize 2048 -o newboot.img
+	cmd_line="console=ttyHSL0,115200,n8 androidboot.hardware=g2 user_debug=31 msm_rtb.filter=0x0 mdss_mdp.panel=1:dsi:0:qcom,mdss_dsi_g2_lgd_cmd"
+	./mkbootimg --kernel zImage --ramdisk ramdisk.gz --cmdline "$cmd_line" --base $base --offset $offset --tags-addr $tags_addr --pagesize 2048 --dt dt.img -o newboot.img
 	mv newboot.img ../boot.img
 
 	# cleanup all temporary working files
@@ -233,7 +250,7 @@ if [ -e "$KERNELDIR"/arch/arm/boot/zImage ]; then
 
 	# create the flashable zip file from the contents of the output directory
 	echo "Make flashable zip..........."
-	zip -r Kernel-"${GETVER}"-"$(date +"[%H-%M]-[%d-%m]-LG-${GETBRANCH}-PWR-CORE")".zip * >/dev/null
+	zip -r Kernel-"${GETVER}"-KK-"$(date +"[%H-%M]-[%d-%m]-LG-${GETBRANCH}-PWR-CORE")".zip * >/dev/null
 	stat boot.img
 	rm -f ./*.img
 	cd ..

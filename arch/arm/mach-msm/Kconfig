@@ -134,7 +134,7 @@ config ARCH_MSM8X60
 	select MULTI_IRQ_HANDLER
 	select MSM_MULTIMEDIA_USE_ION
 	select MSM_PM8X60 if PM
-	select MSM_RUN_QUEUE_STATS
+	#select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
 	select USE_DEV_CTRL_VOLUME
 
@@ -168,7 +168,7 @@ config ARCH_MSM8960
 	select MULTI_IRQ_HANDLER
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
-	select MSM_RUN_QUEUE_STATS
+	#select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
 	select MSM_KRAIT_WFE_FIXUP
 	select MSM_ULTRASOUND_A
@@ -276,7 +276,7 @@ config ARCH_MSM8974
 	select MSM_AUDIO_QDSP6V2 if SND_SOC
 	select MSM_RPM_REGULATOR_SMD
 	select ARM_HAS_SG_CHAIN
-	select MSM_RUN_QUEUE_STATS
+	#select MSM_RUN_QUEUE_STATS
 	select MEMORY_HOLE_CARVEOUT
 	select MSM_RPM_STATS_LOG
 	select QMI_ENCDEC
@@ -285,6 +285,7 @@ config ARCH_MSM8974
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
 	select KRAIT_REGULATOR
 	select ENABLE_VMALLOC_SAVINGS
+	select HAS_MACH_MEMUTILS
 
 config ARCH_APQ8084
 	bool "APQ8084"
@@ -593,7 +594,7 @@ config  ARCH_MSM_KRAITMP
 	select ARCH_MSM_KRAIT
 	select MSM_SMP
 	select HAVE_ARCH_HAS_CURRENT_TIMER
-	select MSM_JTAG if CORESIGHT_ETM
+#	select MSM_JTAG if CORESIGHT_ETM
 	bool
 
 config  ARCH_MSM_CORTEXMP
@@ -1917,6 +1918,18 @@ config MSM_DALRPC_TEST
 
 if CPU_FREQ_MSM
 
+config INTELLI_PLUG
+	bool "Enable intelli-plug cpu hotplug driver"
+	default y
+	help
+	  Generic Intelli-plug cpu hotplug driver for ARM SOCs
+
+config ALUCARD_HOTPLUG
+	bool "Enable alucard-hotplug cpu hotplug driver"
+	default y
+	help
+	  Generic Alucard-hotplug cpu hotplug driver for ARM SOCs
+
 config MSM_CPU_FREQ_SET_MIN_MAX
 	bool "Set Min/Max CPU frequencies."
 	default n
@@ -1927,14 +1940,24 @@ config MSM_CPU_FREQ_SET_MIN_MAX
 config MSM_CPU_FREQ_MAX
 	int "Max CPU Frequency"
 	depends on MSM_CPU_FREQ_SET_MIN_MAX
-	default 384000
+	default 2496000
 
 config MSM_CPU_FREQ_MIN
 	int "Min CPU Frequency"
 	depends on MSM_CPU_FREQ_SET_MIN_MAX
-	default 245760
+	default 300000
 
 endif # CPU_FREQ_MSM
+
+config MSM_CPUFREQ_LIMITER
+	tristate "MSM CPU frequency limiter"
+	default y
+	help
+	  This driver limits MSM CPU frequency through sysfs file system.
+	  To compile this driver as a module, choose M here: the
+	  module will be called cpufreq_stats.
+
+	  If in doubt, say Y.
 
 config MSM_AVS_HW
 	bool "Enable Adaptive Voltage Scaling (AVS)"
@@ -3088,6 +3111,13 @@ config WALL_CLK_SYSFS
 	 Support the wallclk directory in sysfs filesystem to enable the
 	 wall clock simulation and read the current SFN.
 
+config FORCE_FAST_CHARGE
+	bool "Force AC charge mode at will"
+	default y
+	help
+	  A simple sysfs interface to force adapters that
+	  are detected as USB to charge as AC.
+
 config KRAIT_REGULATOR
 	bool "Support Kraits powered via ganged regulators in the pmic"
 	help
@@ -3095,4 +3125,11 @@ config KRAIT_REGULATOR
 	 line from the PMIC. This supply line is powered by multiple
 	 regulators running in ganged mode inside the PMIC. Enable
 	 this option to support such configurations.
+
+config HAS_MACH_MEMUTILS
+	default n
+	bool "Motorola MSM memcpy enhancements"
+	help
+	Faster memcpy performance for Krait
+
 endif

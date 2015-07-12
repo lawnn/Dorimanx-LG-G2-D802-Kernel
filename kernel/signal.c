@@ -482,7 +482,7 @@ flush_signal_handlers(struct task_struct *t, int force_default)
 		if (force_default || ka->sa.sa_handler != SIG_IGN)
 			ka->sa.sa_handler = SIG_DFL;
 		ka->sa.sa_flags = 0;
-#ifdef SA_RESTORER
+#ifdef __ARCH_HAS_SA_RESTORER
 		ka->sa.sa_restorer = NULL;
 #endif
 		sigemptyset(&ka->sa.sa_mask);
@@ -2211,7 +2211,7 @@ relock:
 	 * Now that we woke up, it's crucial if we're supposed to be
 	 * frozen that we freeze now before running anything substantial.
 	 */
-	try_to_freeze();
+	try_to_freeze_nowarn();
 
 	spin_lock_irq(&sighand->siglock);
 	/*
@@ -2764,7 +2764,7 @@ int do_sigtimedwait(const sigset_t *which, siginfo_t *info,
 		recalc_sigpending();
 		spin_unlock_irq(&tsk->sighand->siglock);
 
-		timeout = schedule_timeout_interruptible(timeout);
+		timeout = freezable_schedule_timeout_interruptible(timeout);
 
 		spin_lock_irq(&tsk->sighand->siglock);
 		__set_task_blocked(tsk, &tsk->real_blocked);
@@ -2869,7 +2869,7 @@ do_send_specific(pid_t tgid, pid_t pid, int sig, struct siginfo *info)
 
 static int do_tkill(pid_t tgid, pid_t pid, int sig)
 {
-	struct siginfo info;
+	struct siginfo info = {};
 
 	info.si_signo = sig;
 	info.si_errno = 0;
@@ -3248,6 +3248,19 @@ SYSCALL_DEFINE0(pause)
 
 #endif
 
+int sigsuspend(sigset_t *set)
+{
+	sigdelsetmask(set, sigmask(SIGKILL)|sigmask(SIGSTOP));
+
+	current->saved_sigmask = current->blocked;
+	set_current_blocked(set);
+
+	current->state = TASK_INTERRUPTIBLE;
+	schedule();
+	set_restore_sigmask();
+	return -ERESTARTNOHAND;
+}
+
 #ifdef __ARCH_WANT_SYS_RT_SIGSUSPEND
 /**
  *  sys_rt_sigsuspend - replace the signal mask for a value with the
@@ -3265,15 +3278,7 @@ SYSCALL_DEFINE2(rt_sigsuspend, sigset_t __user *, unewset, size_t, sigsetsize)
 
 	if (copy_from_user(&newset, unewset, sizeof(newset)))
 		return -EFAULT;
-	sigdelsetmask(&newset, sigmask(SIGKILL)|sigmask(SIGSTOP));
-
-	current->saved_sigmask = current->blocked;
-	set_current_blocked(&newset);
-
-	current->state = TASK_INTERRUPTIBLE;
-	schedule();
-	set_restore_sigmask();
-	return -ERESTARTNOHAND;
+	return sigsuspend(&newset);
 }
 #endif /* __ARCH_WANT_SYS_RT_SIGSUSPEND */
 

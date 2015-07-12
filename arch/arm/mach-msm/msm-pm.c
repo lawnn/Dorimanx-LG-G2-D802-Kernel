@@ -25,6 +25,7 @@
 #include <linux/platform_device.h>
 #include <linux/of_platform.h>
 #include <linux/cpu_pm.h>
+#include <linux/sched.h>
 #include <asm/uaccess.h>
 #include <asm/suspend.h>
 #include <asm/cacheflush.h>
@@ -804,6 +805,8 @@ int msm_pm_wait_cpu_shutdown(unsigned int cpu)
 		if (acc_sts & msm_pm_slp_sts[cpu].mask)
 			return 0;
 		udelay(100);
+		WARN(++timeout == 50, "CPU%u didn't collapse within 5ms\n",
+					cpu);
 	}
 
 	pr_info("%s(): Timed out waiting for CPU %u SPM to enter sleep state",

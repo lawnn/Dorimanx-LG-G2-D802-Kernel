@@ -938,6 +938,14 @@ void start_tty(struct tty_struct *tty)
 
 EXPORT_SYMBOL(start_tty);
 
+/* We limit tty time update visibility to every 8 seconds or so. */
+static void tty_update_time(struct timespec *time)
+{
+	unsigned long sec = get_seconds() & ~7;
+	if ((long)(sec - time->tv_sec) > 0)
+		time->tv_sec = sec;
+}
+
 /**
  *	tty_read	-	read method for tty device files
  *	@file: pointer to tty file
@@ -974,8 +982,10 @@ static ssize_t tty_read(struct file *file, char __user *buf, size_t count,
 	else
 		i = -EIO;
 	tty_ldisc_deref(ld);
+
 	if (i > 0)
-		inode->i_atime = current_fs_time(inode->i_sb);
+		tty_update_time(&inode->i_atime);
+
 	return i;
 }
 
@@ -1078,7 +1088,7 @@ static inline ssize_t do_tty_write(
 	}
 	if (written) {
 		struct inode *inode = file->f_path.dentry->d_inode;
-		inode->i_mtime = current_fs_time(inode->i_sb);
+		tty_update_time(&inode->i_mtime);
 		ret = written;
 	}
 out:
@@ -2789,6 +2799,13 @@ static long tty_compat_ioctl(struct file *file, unsigned int cmd,
 }
 #endif
 
+static int this_tty(const void *t, struct file *file, unsigned fd)
+{
+	if (likely(file->f_op->read != tty_read))
+		return 0;
+	return file_tty(file) != t ? 0 : fd + 1;
+}
+	
 /*
  * This implements the "Secure Attention Key" ---  the idea is to
  * prevent trojan horses by killing all processes associated with this
@@ -2816,8 +2833,6 @@ void __do_SAK(struct tty_struct *tty)
 	struct task_struct *g, *p;
 	struct pid *session;
 	int		i;
-	struct file	*filp;
-	struct fdtable *fdt;
 
 	if (!tty)
 		return;
@@ -2847,27 +2862,12 @@ void __do_SAK(struct tty_struct *tty)
 			continue;
 		}
 		task_lock(p);
-		if (p->files) {
-			/*
-			 * We don't take a ref to the file, so we must
-			 * hold ->file_lock instead.
-			 */
-			spin_lock(&p->files->file_lock);
-			fdt = files_fdtable(p->files);
-			for (i = 0; i < fdt->max_fds; i++) {
-				filp = fcheck_files(p->files, i);
-				if (!filp)
-					continue;
-				if (filp->f_op->read == tty_read &&
-				    file_tty(filp) == tty) {
-					printk(KERN_NOTICE "SAK: killed process %d"
-					    " (%s): fd#%d opened to the tty\n",
-					    task_pid_nr(p), p->comm, i);
-					force_sig(SIGKILL, p);
-					break;
-				}
-			}
-			spin_unlock(&p->files->file_lock);
+		i = iterate_fd(p->files, 0, this_tty, tty);
+		if (i != 0) {
+			printk(KERN_NOTICE "SAK: killed process %d"
+			    " (%s): fd#%d opened to the tty\n",
+				    task_pid_nr(p), p->comm, i - 1);
+			force_sig(SIGKILL, p);
 		}
 		task_unlock(p);
 	} while_each_thread(g, p);

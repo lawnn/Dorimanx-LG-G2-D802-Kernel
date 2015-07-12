@@ -30,7 +30,6 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
-#include <trace/events/power.h>
 #include <mach/socinfo.h>
 #include <mach/cpufreq.h>
 #include <mach/msm_bus.h>
@@ -181,7 +180,6 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
-	trace_cpu_frequency_switch_start(freqs.old, freqs.new, policy->cpu);
 	if (is_clk) {
 		unsigned long rate = new_freq * 1000;
 		rate = clk_round_rate(cpu_clk[policy->cpu], rate);
@@ -194,10 +192,8 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 		ret = acpuclk_set_rate(policy->cpu, new_freq, SETRATE_CPUFREQ);
 	}
 
-	if (!ret) {
-		trace_cpu_frequency_switch_end(policy->cpu);
+	if (!ret)
 		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
-	}
 
 	/* Restore priority after clock ramp-up */
 	if (freqs.new > freqs.old && saved_sched_policy >= 0) {
@@ -334,9 +330,11 @@ int msm_cpufreq_set_freq_limits(uint32_t cpu, uint32_t min, uint32_t max)
 	else
 		limit->allowed_max = limit->max;
 
+#if 0
 	pr_debug("%s: Limiting cpu %d min = %d, max = %d\n",
 			__func__, cpu,
 			limit->allowed_min, limit->allowed_max);
+#endif
 
 	return 0;
 }
@@ -373,6 +371,9 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 	policy->max = CONFIG_MSM_CPU_FREQ_MAX;
 #endif
 
+	policy->max = 2265600;
+	policy->min = 300000;
+
 	if (is_clk)
 		cur_freq = clk_get_rate(cpu_clk[policy->cpu])/1000;
 	else
@@ -395,7 +396,7 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 		return ret;
 	pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
 			policy->cpu, cur_freq, table[index].frequency);
-	policy->cur = table[index].frequency;
+	policy->cur = policy->max;
 
 	policy->cpuinfo.transition_latency =
 		acpuclk_get_switch_time() * NSEC_PER_USEC;

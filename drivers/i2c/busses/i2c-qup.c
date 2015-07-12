@@ -134,7 +134,7 @@ enum {
 #define I2C_STATUS_CLK_STATE		13
 #define QUP_OUT_FIFO_NOT_EMPTY		0x10
 #define I2C_GPIOS_DT_CNT		(2)		/* sda and scl */
-#if defined(CONFIG_TOUCHSCREEN_ATMEL_S540)
+#if defined(CONFIG_TOUCHSCREEN_ATMEL_S540) || defined(CONFIG_SMB349_CHARGER)
 bool i2c_suspended = false;		/* Use atme touch IC for checking i2c suspend */
 #endif
 static char const * const i2c_rsrcs[] = {"i2c_clk", "i2c_sda"};
@@ -1787,7 +1787,7 @@ static int qup_i2c_resume(struct device *device)
 	 * clock ON and gpio configuration
 	 */
 	dev_dbg(device, "system resume");
-#if defined(CONFIG_TOUCHSCREEN_ATMEL_S540)
+#if defined(CONFIG_TOUCHSCREEN_ATMEL_S540) || defined(CONFIG_SMB349_CHARGER)
 	i2c_suspended = false;
 #endif
 	return 0;

@@ -671,7 +671,7 @@ static enum page_references page_check_references(struct page *page,
 		return PAGEREF_RECLAIM;
 
 	if (referenced_ptes) {
-		if (PageAnon(page))
+		if (PageSwapBacked(page))
 			return PAGEREF_ACTIVATE;
 		/*
 		 * All mapped pages start out with page table
@@ -1970,6 +1970,33 @@ static inline bool compaction_ready(struct zone *zone, struct scan_control *sc)
 }
 
 /*
+ * Helper functions to adjust nice level of kswapd, based on the priority of
+ * the task (p) that called it. If it is already higher priority we do not
+ * demote its nice level since it is still working on behalf of a higher
+ * priority task. With kernel threads we leave it at nice 0.
+ *
+ * We don't ever run kswapd real time, so if a real time task calls kswapd we
+ * set it to highest SCHED_NORMAL priority.
+ */
+static inline int effective_sc_prio(struct task_struct *p)
+{
+	if (likely(p->mm)) {
+		if (rt_task(p))
+			return -20;
+		return task_nice(p);
+	}
+	return 0;
+}
+
+static void set_kswapd_nice(struct task_struct *kswapd, int active)
+{
+	long nice = effective_sc_prio(current);
+
+	if (task_nice(kswapd) > nice || !active)
+		set_user_nice(kswapd, nice);
+}
+
+/*
  * This is the direct reclaim path, for page-allocating processes.  We only
  * try to reclaim pages from zones which will satisfy the caller's allocation
  * request.
@@ -2377,6 +2404,10 @@ static bool sleeping_prematurely(pg_data_t *pgdat, int order, long remaining,
 	unsigned long balanced = 0;
 	bool all_zones_ok = true;
 
+	/* If kswapd has been running too long, just sleep */
+	if (need_resched())
+		return false;
+
 	/* If a direct reclaimer woke kswapd within HZ/10, it's premature */
 	if (remaining)
 		return true;
@@ -2640,11 +2671,11 @@ loop_again:
 		 * OK, kswapd is getting into trouble.  Take a nap, then take
 		 * another pass across the zones.
 		 */
-		if (total_scanned && (sc.priority < DEF_PRIORITY - 2)) {
+		if (total_scanned && (sc.priority < DEF_PRIORITY - 8)) {
 			if (has_under_min_watermark_zone)
 				count_vm_event(KSWAPD_SKIP_CONGESTION_WAIT);
 			else
-				congestion_wait(BLK_RW_ASYNC, HZ/10);
+				congestion_wait(BLK_RW_ASYNC, HZ/60);
 		}
 
 		/*
@@ -2884,6 +2915,8 @@ static int kswapd(void *p)
 						&balanced_classzone_idx);
 		}
 	}
+
+	current->reclaim_state = NULL;
 	return 0;
 }
 
@@ -2893,6 +2926,7 @@ static int kswapd(void *p)
 void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
 {
 	pg_data_t *pgdat;
+	int active;
 
 	if (!populated_zone(zone))
 		return;
@@ -2904,7 +2938,9 @@ void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
 		pgdat->kswapd_max_order = order;
 		pgdat->classzone_idx = min(pgdat->classzone_idx, classzone_idx);
 	}
-	if (!waitqueue_active(&pgdat->kswapd_wait))
+	active = waitqueue_active(&pgdat->kswapd_wait);
+	set_kswapd_nice(pgdat->kswapd, active);
+	if (!active)
 		return;
 	if (zone_watermark_ok_safe(zone, order, low_wmark_pages(zone), 0, 0))
 		return;
@@ -3025,14 +3061,17 @@ int kswapd_run(int nid)
 }
 
 /*
- * Called by memory hotplug when all memory in a node is offlined.
+ * Called by memory hotplug when all memory in a node is offlined.  Caller must
+ * hold lock_memory_hotplug().
  */
 void kswapd_stop(int nid)
 {
 	struct task_struct *kswapd = NODE_DATA(nid)->kswapd;
 
-	if (kswapd)
+	if (kswapd) {
 		kthread_stop(kswapd);
+		NODE_DATA(nid)->kswapd = NULL;
+	}
 }
 
 static int __init kswapd_init(void)

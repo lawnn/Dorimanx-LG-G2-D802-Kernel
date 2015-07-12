@@ -98,6 +98,8 @@ static int alarmtimer_rtc_add_device(struct device *dev,
 
 static inline void alarmtimer_rtc_timer_init(void)
 {
+	mutex_init(&power_on_alarm_lock);
+
 	rtc_timer_init(&rtctimer, NULL, NULL);
 }
 
@@ -123,6 +125,7 @@ struct rtc_device *alarmtimer_get_rtcdev(void)
 static inline int alarmtimer_rtc_interface_setup(void) { return 0; }
 static inline void alarmtimer_rtc_interface_remove(void) { }
 static inline void alarmtimer_rtc_timer_init(void) { }
+void set_power_on_alarm(long secs, bool enable) { }
 #endif
 
 /**
@@ -474,7 +477,7 @@ static int alarm_clock_getres(const clockid_t which_clock, struct timespec *tp)
 	clockid_t baseid = alarm_bases[clock2alarm(which_clock)].base_clockid;
 
 	if (!alarmtimer_get_rtcdev())
-		return -ENOTSUPP;
+		return -EINVAL;
 
 	return hrtimer_get_res(baseid, tp);
 }
@@ -491,7 +494,7 @@ static int alarm_clock_get(clockid_t which_clock, struct timespec *tp)
 	struct alarm_base *base = &alarm_bases[clock2alarm(which_clock)];
 
 	if (!alarmtimer_get_rtcdev())
-		return -ENOTSUPP;
+		return -EINVAL;
 
 	*tp = ktime_to_timespec(base->gettime());
 	return 0;

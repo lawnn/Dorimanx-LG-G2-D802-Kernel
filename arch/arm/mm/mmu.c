@@ -307,7 +307,8 @@ static struct mem_type mem_types[] = {
 		.domain    = DOMAIN_KERNEL,
 	},
 	[MT_MEMORY_DMA_READY] = {
-		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY,
+		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
+				L_PTE_XN,
 		.prot_l1   = PMD_TYPE_TABLE,
 		.domain    = DOMAIN_KERNEL,
 	},
@@ -576,7 +577,7 @@ static void __init build_mem_type_table(void)
 #endif
 
 	for (i = 0; i < 16; i++) {
-		unsigned long v = pgprot_val(protection_map[i]);
+		pteval_t v = pgprot_val(protection_map[i]);
 		protection_map[i] = __pgprot(v | user_pgprot);
 	}
 
@@ -1500,7 +1501,9 @@ static void __init map_lowmem(void)
 		vm->flags = VM_LOWMEM | VM_ARM_STATIC_MAPPING;
 		vm->flags |= VM_ARM_MTYPE(type);
 		vm->caller = map_lowmem;
-		vm_area_add_early(vm++);
+		vm_area_add_early(vm);
+		mark_vmalloc_reserved_area(vm->addr, vm->size);
+		vm++;
 	}
 }
 

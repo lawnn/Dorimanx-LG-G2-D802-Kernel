@@ -242,19 +242,8 @@ struct rt_signal_frame {
 static long _sigpause_common(old_sigset_t set)
 {
 	sigset_t blocked;
-
-	current->saved_sigmask = current->blocked;
-
-	set &= _BLOCKABLE;
 	siginitset(&blocked, set);
-	set_current_blocked(&blocked);
-
-	current->state = TASK_INTERRUPTIBLE;
-	schedule();
-
-	set_restore_sigmask();
-
-	return -ERESTARTNOHAND;
+	return sigsuspend(&blocked);
 }
 
 asmlinkage long sys_sigpause(unsigned int set)
@@ -309,9 +298,7 @@ void do_rt_sigreturn(struct pt_regs *regs)
 		err |= restore_fpu_state(regs, fpu_save);
 
 	err |= __copy_from_user(&set, &sf->mask, sizeof(sigset_t));
-	err |= do_sigaltstack(&sf->stack, NULL, (unsigned long)sf);
-
-	if (err)
+	if (err || do_sigaltstack(&sf->stack, NULL, (unsigned long)sf) == -EFAULT)
 		goto segv;
 
 	err |= __get_user(rwin_save, &sf->rwin_save);
