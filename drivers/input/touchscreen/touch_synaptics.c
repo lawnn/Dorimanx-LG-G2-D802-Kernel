@@ -311,10 +311,10 @@ touch_maker_id get_touch_maker_id(void)
 #ifdef CONFIG_ADC_READY_CHECK_JB
 	//while ((qpnp_vadc_is_ready() != 0) && (trial_us < (200 * 1000))) {
 		//udelay(1);
-		while ((qpnp_vadc_is_ready() != 0) && (trial_us < (150))) {
+	while ((qpnp_vadc_is_ready() != 0) && (trial_us < (150))) {
 		msleep(10);
 		trial_us++;
-		}
+	}
 
 	if (qpnp_vadc_is_ready() == 0) {
 		/* TOUCH_MAKER_ID */
@@ -378,7 +378,7 @@ static void touch_multi_tap_work(struct work_struct *multi_tap_work)
 			TOUCH_ERR_MSG("REPORT_WAKEUP_GESTURE_ONLY_REG write fail");
 	}
 
-	if(r_mem != NULL)
+	if (r_mem != NULL)
 		kfree(r_mem);
 
 	send_uevent_lpwg(LPWG_PASSWORD);
@@ -545,7 +545,7 @@ int synaptics_ts_get_data(struct i2c_client *client, struct touch_data* data)
 		{
 			int i = 0;
 			if (custom_gesture_status) {
-				for(i=0;i<ts->password_tap_count;i++) {
+				for (i = 0; i < ts->password_tap_count; i++) {
 				}
 			}
 		}
@@ -566,16 +566,16 @@ int synaptics_ts_get_data(struct i2c_client *client, struct touch_data* data)
 				}
 			}
 
-			if(r_mem != NULL)
+			if (r_mem != NULL)
 				kfree(r_mem);
-			
+
 			hrtimer_try_to_cancel(&ts->multi_tap_timer);
 			if (!hrtimer_callback_running(&ts->multi_tap_timer))
 				hrtimer_start(&ts->multi_tap_timer, ktime_set(0, MS_TO_NS(200)), HRTIMER_MODE_REL);
 		}
 		return 0;
 	}
-#endif	
+#endif
 
 #ifdef CUST_G2_TOUCH
 	if (ts->ts_data.interrupt_status_reg == 0) {
@@ -1499,7 +1499,7 @@ int synaptics_ts_init(struct i2c_client *client, struct touch_fw_info *fw_info)
 ////for vu3 pen writing
 	r_mem = kzalloc(sizeof(char) * (9), GFP_KERNEL);
 	if (unlikely(touch_i2c_read(client, JITTER_FILTER_STR_REG, (JITTER_FILTER_STR_REG_OFFSET+1), r_mem) < 0)) {
-		if(r_mem != NULL) kfree(r_mem);
+		if (r_mem != NULL) kfree(r_mem);
 		TOUCH_ERR_MSG("0x16_REG read fail\n");
 		return -EIO;
 	}
@@ -1510,13 +1510,13 @@ int synaptics_ts_init(struct i2c_client *client, struct touch_fw_info *fw_info)
 
 	if (touch_i2c_write(ts->client, JITTER_FILTER_STR_REG, (JITTER_FILTER_STR_REG_OFFSET+1), r_mem) < 0) {
 		TOUCH_ERR_MSG("0x16_REG write fail\n");
-		if(r_mem != NULL) kfree(r_mem);
+		if (r_mem != NULL) kfree(r_mem);
 		return -EIO;
 	}
 
 	if (unlikely(touch_i2c_read(client, JITTER_FILTER_STR_REG, (JITTER_FILTER_STR_REG_OFFSET+1), r_mem) < 0)) {
 		TOUCH_ERR_MSG("0x16_REG read fail\n");
-		if(r_mem != NULL) kfree(r_mem);
+		if (r_mem != NULL) kfree(r_mem);
 		return -EIO;
 	}
 
@@ -1765,7 +1765,7 @@ int synaptics_ts_fw_upgrade(struct i2c_client *client, struct touch_fw_info *fw_
 	if (ts->fw_info.fw_reflash_twice) {
 		TOUCH_INFO_MSG("Touch IC Bootloader is old, So Reflash again....\n");
 		ret = FirmwareUpgrade(ts, fw_info->fw_upgrade.fw_path);
-		}
+	}
 	/* update IC info */
 	if (ret >= 0)
 		get_ic_info(ts, fw_info);
@@ -1956,7 +1956,7 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					TOUCH_INFO_MSG("ic_ctrl: IC_CTRL_DOUBLE_TAP_WAKEUP_MODE = 1\n");				
 					r_mem = kzalloc(sizeof(char) * (10), GFP_KERNEL);
 					*(r_mem+0) = 0x1;
-#if defined(CONFIG_LGE_Z_TOUCHSCREEN)||defined(A1_only)
+#if defined(CONFIG_LGE_Z_TOUCHSCREEN) || defined(A1_only)
 					*(r_mem+1) = 0x28;
 #else
 					*(r_mem+1) = 0x14;
@@ -2145,10 +2145,10 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 						if(touch_i2c_write(client, MOTION_SUPPRESSION,(3), buf3) < 0)
 							TOUCH_ERR_MSG("MOTION_SUPPRESSION write fail\n");
 					}
-*/					
+*/
 					DO_SAFE(synaptics_ts_page_data_read(client, LPWG_CTRL_PAGE, MULTITAP_COUNT_REG, 1, &buf), error);
 					TOUCH_INFO_MSG("double TAP COUNT %d\n", 2);  // for double tap mode
-					buf = (buf & 0x07) | (2 << 3);				
+					buf = (buf & 0x07) | (2 << 3);
 					TOUCH_INFO_MSG("MultiTap LPWG Control Reg value 0x%02X\n", buf);
 					DO_SAFE(synaptics_ts_page_data_write_byte(client, LPWG_CTRL_PAGE, MULTITAP_COUNT_REG, buf), error);
 					DO_SAFE(touch_i2c_write_byte(client, PAGE_SELECT_REG, DEFAULT_PAGE), error);
@@ -2338,7 +2338,7 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 #ifdef CONFIG_LGE_SECURITY_KNOCK_ON
 error:
 	return -EIO;
-#endif	
+#endif
 }
 
 #ifdef CONFIG_LGE_SECURITY_KNOCK_ON

@@ -30,9 +30,9 @@ static int pm_dump_set(void *data, u64 val)
 	struct kgsl_device *device = data;
 
 	if (val) {
-		mutex_lock(&device->mutex);
+		kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 		kgsl_postmortem_dump(device, 1);
-		mutex_unlock(&device->mutex);
+		kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 	}
 
 	return 0;
@@ -337,6 +337,9 @@ kgsl_process_init_debugfs(struct kgsl_process_private *private)
 	if (!private->debug_root)
 		return -EINVAL;
 
+	private->debug_root->d_inode->i_uid = proc_d_debugfs->d_inode->i_uid;
+	private->debug_root->d_inode->i_gid = proc_d_debugfs->d_inode->i_gid;
+
 	/*
 	 * debugfs_create_dir() and debugfs_create_file() both
 	 * return -ENODEV if debugfs is disabled in the kernel.
@@ -355,6 +358,9 @@ kgsl_process_init_debugfs(struct kgsl_process_private *private)
 
 		if (ret == -ENODEV)
 			ret = 0;
+	} else if (dentry) {
+		dentry->d_inode->i_uid = proc_d_debugfs->d_inode->i_uid;
+		dentry->d_inode->i_gid = proc_d_debugfs->d_inode->i_gid;
 	}
 
 	return ret;

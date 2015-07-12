@@ -77,7 +77,6 @@ extern int touch_thermal_mode;
 static int knockon_wakeup_uevent_reporting = 0;
 #endif
 
-
 #if defined(Z_GLOVE_TOUCH_SUPPORT)
 static int set_glove_finger_enable(struct lge_touch_data *ts, int onoff);
 static int glove_finger_enable = 0;
@@ -317,7 +316,7 @@ static void change_ime_drumming_func(struct work_struct *work_ime_drumming) {
 			TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
 		} else {
 			TOUCH_INFO_MSG("%s 0x31\n", __func__);
-		}	
+		}
 	}
 	return;
 #else
@@ -382,7 +381,7 @@ static void change_ime_drumming_func(struct work_struct *work_ime_drumming) {
 			TOUCH_INFO_MSG("%s : Min Drumming Distance           :  10 (default)\n", __func__);
 		}
 	}
-#endif	
+#endif
 }
 #endif
 #endif
@@ -3288,7 +3287,6 @@ static irqreturn_t touch_thread_irq_handler(int irq, void *dev_id)
 
 	queue_work(touch_wq, &ts->work);
 
-
 	return IRQ_HANDLED;
 }
 
@@ -3651,7 +3649,7 @@ static ssize_t store_ts_reset(struct lge_touch_data *ts, const char *buf, size_t
 #ifdef CUST_G2_TOUCH
 	cancel_delayed_work_sync(&ts->work_f54);
 #endif
-#ifdef I2C_SUSPEND_WORKAROUND	
+#ifdef I2C_SUSPEND_WORKAROUND
 	cancel_delayed_work_sync(&ts->check_suspended_work);
 #endif
 	if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
@@ -4073,8 +4071,8 @@ static ssize_t show_ime_drumming_status(struct lge_touch_data *ts, char *buf)
 	}
 
 	ret += sprintf(buf+ret, "%s\n", (ime_drumming_status == IME_ON) ? "IME_ON" : "IME_OFF");
-	ret += sprintf(buf+ret, "Finger Amplitude Threshold  = %2x\n", small_finger_amp_th[0]);			
-	ret += sprintf(buf+ret, "Small Finger Amplitude Threshold  = %2x\n", small_finger_amp_th[1]);			
+	ret += sprintf(buf+ret, "Finger Amplitude Threshold  = %2x\n", small_finger_amp_th[0]);
+	ret += sprintf(buf+ret, "Small Finger Amplitude Threshold  = %2x\n", small_finger_amp_th[1]);
 #endif
 	return ret;
 }
@@ -4097,7 +4095,7 @@ static ssize_t store_ime_drumming_status(struct lge_touch_data *ts, const char *
 	}
 
 	TOUCH_INFO_MSG("ime status = %s\n", (ime_drumming_status == IME_ON) ? "IME_ON" : "IME_OFF");
-#endif	
+#endif
 	return count;
 }
 #endif
@@ -4630,7 +4628,7 @@ static void set_wakeup_mode(struct lge_touch_data *ts, int value)
 			}
 			break;
 	}
-	
+
 no_action:
 	touch_gesture_enable = value;
 	if (touch_debug_mask & DEBUG_BASE_INFO)
@@ -4755,7 +4753,6 @@ static LGE_TOUCH_ATTR(lpwg_data, S_IRUGO | S_IWUSR, show_lpwg_data, store_lpwg_d
 static LGE_TOUCH_ATTR(lpwg_notify, S_IRUGO | S_IWUSR, NULL, store_lpwg_notify);
 #endif
 
-
 static struct attribute *lge_touch_attribute_list[] = {
 	&lge_touch_attr_platform_data.attr,
 	&lge_touch_attr_firmware.attr,
@@ -4783,7 +4780,7 @@ static struct attribute *lge_touch_attribute_list[] = {
 #if defined(Z_GLOVE_TOUCH_SUPPORT)
 	&lge_touch_attr_glove_finger_enable.attr,
 #endif
-#if (defined(A1_only)&& !defined(CONFIG_MACH_MSM8974_G2_KDDI))|| defined(CONFIG_LGE_Z_TOUCHSCREEN)
+#if (defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI)) || defined(CONFIG_LGE_Z_TOUCHSCREEN)
 	&lge_touch_attr_ime_status.attr,
 #endif
 #ifdef CUST_G2_TOUCH_WAKEUP_GESTURE
@@ -5784,8 +5781,8 @@ static int touch_lcd_suspend(struct device *device)
 	cancel_delayed_work_sync(&ts->work_thermal);
 #ifdef I2C_SUSPEND_WORKAROUND
 	cancel_delayed_work_sync(&ts->check_suspended_work);
-#endif	
-#if (defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI) && !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM) && !defined(CONFIG_MACH_MSM8974_G2_OPT_AU))  || defined(CONFIG_LGE_Z_TOUCHSCREEN)
+#endif
+#if (defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI) && !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM) && !defined(CONFIG_MACH_MSM8974_G2_OPT_AU)) || defined(CONFIG_LGE_Z_TOUCHSCREEN)
 	cancel_delayed_work_sync(&ts->work_ime_drumming);
 #endif
 	if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
@@ -5794,9 +5791,9 @@ static int touch_lcd_suspend(struct device *device)
 	release_all_ts_event(ts);
 
 	mutex_lock(&ts->irq_work_mutex);
-#ifdef I2C_SUSPEND_WORKAROUND	
+#ifdef I2C_SUSPEND_WORKAROUND
 	dev_dbg(&ts->client->dev, " %s\n", __func__);
-#endif	
+#endif
 	ts_suspend = 1;
 #if defined(CONFIG_LGE_VU3_TOUCHSCREEN)
 	knockon_wakeup_uevent_reporting = 0;
