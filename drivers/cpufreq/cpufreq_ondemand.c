@@ -35,20 +35,20 @@
 #define DEF_FREQUENCY_DOWN_DIFFERENTIAL		(10)
 #define MICRO_FREQUENCY_DOWN_DIFFERENTIAL	(3)
 
-#define DEF_FREQUENCY_UP_THRESHOLD		(75)
-#define MICRO_FREQUENCY_UP_THRESHOLD		(80)
+#define DEF_FREQUENCY_UP_THRESHOLD		(70)
+#define MICRO_FREQUENCY_UP_THRESHOLD		(95)
 
-#define DEF_MIDDLE_GRID_STEP			(10)
-#define DEF_HIGH_GRID_STEP			(15)
-#define DEF_MIDDLE_GRID_LOAD			(30)
-#define DEF_HIGH_GRID_LOAD			(40)
+#define DEF_MIDDLE_GRID_STEP			(14)
+#define DEF_HIGH_GRID_STEP			(20)
+#define DEF_MIDDLE_GRID_LOAD			(65)
+#define DEF_HIGH_GRID_LOAD			(89)
 
 #define DEF_SAMPLING_DOWN_FACTOR		(1)
 #define DEF_SAMPLING_RATE			(50000)
 
-#define DEF_SYNC_FREQUENCY			(1574400)
+#define DEF_SYNC_FREQUENCY			(1728000)
 #define DEF_OPTIMAL_FREQUENCY			(1574400)
-#define DEF_OPTIMAL_MAX_FREQ			(1958400)
+#define DEF_OPTIMAL_MAX_FREQ			(1728000)
 
 /* Kernel tunabble controls */
 #define MICRO_FREQUENCY_MIN_SAMPLE_RATE		(10000)
@@ -1004,7 +1004,7 @@ static void do_dbs_timer(struct work_struct *work)
 			dbs_info->freq_lo, CPUFREQ_RELATION_H);
 		delay = dbs_info->freq_lo_jiffies;
 	}
-	queue_delayed_work_on(cpu, dbs_wq, &dbs_info->work, delay);
+	mod_delayed_work_on(cpu, dbs_wq, &dbs_info->work, delay);
 	mutex_unlock(&dbs_info->timer_mutex);
 }
 
@@ -1018,7 +1018,7 @@ static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
 
 	dbs_info->sample_type = DBS_NORMAL_SAMPLE;
 	INIT_DEFERRABLE_WORK(&dbs_info->work, do_dbs_timer);
-	queue_delayed_work_on(dbs_info->cpu, dbs_wq, &dbs_info->work, delay);
+	mod_delayed_work_on(dbs_info->cpu, dbs_wq, &dbs_info->work, delay);
 	dbs_info->activated = true;
 }
 

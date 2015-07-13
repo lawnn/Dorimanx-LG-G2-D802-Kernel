@@ -13,6 +13,7 @@
 
 #ifdef CONFIG_POWERSUSPEND
 #include <linux/powersuspend.h>
+#include <linux/syscalls.h>
 #endif
 
 #include "power.h"
@@ -71,7 +72,7 @@ static DECLARE_WORK(suspend_work, try_to_suspend);
 
 void queue_up_suspend_work(void)
 {
-	if (!work_pending(&suspend_work) && autosleep_state > PM_SUSPEND_ON)
+	if (autosleep_state > PM_SUSPEND_ON)
 		queue_work(autosleep_wq, &suspend_work);
 }
 
@@ -113,6 +114,11 @@ int pm_autosleep_set_state(suspend_state_t state)
 #ifdef CONFIG_POWERSUSPEND
 		/* Yank555.lu : hook to handle powersuspend tasks (sleep) */
 		set_power_suspend_state_autosleep_hook(POWER_SUSPEND_ACTIVE);
+#endif
+#ifndef CONFIG_PM_SYNC_BEFORE_SUSPEND
+		printk(KERN_INFO "PM: Syncing filesystems ... ");
+		sys_sync();
+		printk("done.\n");
 #endif
 	} else {
 		pm_wakep_autosleep_enabled(false);

@@ -627,7 +627,7 @@ static int __qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
 	}
 
 	domain = chip_lookup[busno]->domain;
-	irq = irq_radix_revmap_lookup(domain, hwirq);
+	irq = irq_find_mapping(domain, hwirq);
 
 	if (show) {
 		struct irq_desc *desc;

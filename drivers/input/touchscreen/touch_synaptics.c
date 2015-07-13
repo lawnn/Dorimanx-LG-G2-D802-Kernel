@@ -42,9 +42,10 @@
 	defined(CONFIG_MACH_MSM8974_G2_TMO_US) || \
 	defined(CONFIG_MACH_MSM8974_G2_CA) || \
 	defined(CONFIG_MACH_MSM8974_G2_SPR) || \
-	defined(CONFIG_MACH_MSM8974_G2_VZW)
-#include "D800_801_803_LS980_VS980_driver/SynaImage_for_G2_LGIT_revB.h"
-#include "D800_801_803_LS980_VS980_driver/SynaImage_for_G2_TPK.h"
+	defined(CONFIG_MACH_MSM8974_G2_VZW) || \
+	defined(CONFIG_MACH_MSM8974_G2_KR)
+#include "D800_801_803_F320_LS980_VS980_driver/SynaImage_for_G2_LGIT_revB.h"
+#include "D800_801_803_F320_LS980_VS980_driver/SynaImage_for_G2_TPK.h"
 #else
 #include "SynaImage_for_G2_LGIT_revB.h"
 #include "SynaImage_for_G2_TPK.h"
@@ -107,9 +108,10 @@
 #endif
 
 #define INTERRUPT_ENABLE_REG			(ts->common_fc.dsc.control_base+1)		/* Interrupt Enable 0 */
+#if defined(CONFIG_LGE_VU3_TOUCHSCREEN)
 #define DOZE_WAKE_THRESH_REG 				(ts->common_fc.dsc.control_base+3)		/* DOZE_WAKE_THRESH_REG */
 #define DOZE_HOLDOFF_REG 				(ts->common_fc.dsc.control_base+4)		/* DOZE_HOLD_OFF_REG */
-#define DOZE_RECAL_INTERVAL_REG 				(ts->common_fc.dsc.control_base+5)		/* DOZE_RECAL_INTERVAL_REG */
+#endif
 
 #define DEVICE_STATUS_REG				(ts->common_fc.dsc.data_base)			/* Device Status */
 #define DEVICE_FAILURE_MASK				0x03
@@ -189,7 +191,12 @@
 #define LPWG_CTRL_PAGE					0x04
 #define MULTITAP_COUNT_REG				0x31
 #define MAX_INTERTAP_TIME_REG			0x33
+#if !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM) || \
+		!defined(CONFIG_MACH_MSM8974_G2_CA) || \
+		!defined(CONFIG_MACH_MSM8974_G2_KR) || \
+		!defined(CONFIG_MACH_MSM8974_G2_VZW)
 #define MULTITAP_PRESS_RELEASE_DISTANCE	0x34
+#endif
 #define INTERTAP_DISTANCE_REG			0x35
 #endif
 
@@ -319,10 +326,19 @@ touch_maker_id get_touch_maker_id(void)
 
 /* LIMIT: Include ONLY A1, B1, Vu3, Z models used MSM8974 AA/AB */
 #ifdef CONFIG_ADC_READY_CHECK_JB
-	//while ((qpnp_vadc_is_ready() != 0) && (trial_us < (200 * 1000))) {
-		//udelay(1);
+#if defined(CONFIG_MACH_MSM8974_G2_SPR) || \
+		defined(CONFIG_MACH_MSM8974_G2_ATT) || \
+		defined(CONFIG_MACH_MSM8974_G2_TMO_US) || \
+		defined(CONFIG_MACH_MSM8974_G2_CA) || \
+		defined(CONFIG_MACH_MSM8974_G2_KR) || \
+		defined(CONFIG_MACH_MSM8974_G2_SPR) || \
+		defined(CONFIG_MACH_MSM8974_G2_VZW)
+	while ((qpnp_vadc_is_ready() != 0) && (trial_us < (200 * 1000))) {
+		udelay(1);
+#else
 	while ((qpnp_vadc_is_ready() != 0) && (trial_us < (150))) {
 		msleep(10);
+#endif
 		trial_us++;
 	}
 
@@ -535,7 +551,11 @@ int synaptics_ts_get_data(struct i2c_client *client, struct touch_data* data)
 		TOUCH_INFO_MSG("[synaptics_ts_get_data] ts->double_tap_enable");
 		goto ignore_interrupt;
 	} else if (ts->password_enable) {
+#if defined(KNOCKON_MASK)
+		TOUCH_INFO_MSG("[synaptics_ts_get_data] ts->password_enable ts->password_tap_count=X");
+#else
 		TOUCH_INFO_MSG("[synaptics_ts_get_data] ts->password_enable ts->password_tap_count=%d", ts->password_tap_count);
+#endif
 		if (unlikely(touch_i2c_write_byte(client, PAGE_SELECT_REG, 4) < 0)) {
 			TOUCH_ERR_MSG("PAGE_SELECT_REG write fail\n");
 			return -EIO;
@@ -556,7 +576,11 @@ int synaptics_ts_get_data(struct i2c_client *client, struct touch_data* data)
 			int i = 0;
 			if (custom_gesture_status) {
 				for (i = 0; i < ts->password_tap_count; i++) {
+#if defined(KNOCKON_MASK)
+					TOUCH_INFO_MSG("lpwg data %d: 0:XX 1:XX 2:XX 3:XX\n",  i);
+#else
 					TOUCH_INFO_MSG("lpwg data %d: 0:0x%-4x 1:0x%-4x 2:0x%-4x 3:0x%-4x\n",  i, lpwg_data[4*i], lpwg_data[4*i+1],lpwg_data[4*i+2],lpwg_data[4*i+3]);
+#endif
 				}
 			}
 		}
@@ -1508,7 +1532,7 @@ int synaptics_ts_init(struct i2c_client *client, struct touch_fw_info *fw_info)
 	}
 
 #if defined(CONFIG_LGE_VU3_TOUCHSCREEN)
-////for vu3 pen writing
+/* for vu3 pen writing */
 	r_mem = kzalloc(sizeof(char) * (9), GFP_KERNEL);
 	if (unlikely(touch_i2c_read(client, JITTER_FILTER_STR_REG, (JITTER_FILTER_STR_REG_OFFSET+1), r_mem) < 0)) {
 		if (r_mem != NULL) kfree(r_mem);
@@ -1536,7 +1560,7 @@ int synaptics_ts_init(struct i2c_client *client, struct touch_fw_info *fw_info)
 
 	if (r_mem != NULL)
 		kfree(r_mem);
-////for doze mode
+/* for doze mode */
 	if (unlikely(touch_i2c_write_byte(client, DOZE_INTERVAL_REG, 1) < 0)) {
 		TOUCH_ERR_MSG("DOZE_INTERVAL_REG write fail\n");
 		return -EIO;
@@ -1890,10 +1914,12 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					TOUCH_ERR_MSG("OBJECT_REPORT_ENABLE write fail\n");
 					return -EIO;
 				}
+#ifndef CONFIG_MACH_MSM8974_G2_OPEN_COM
 				if (unlikely(touch_i2c_write_byte(client, FEATURE_ENABLE, 0x0) < 0)) {
 					TOUCH_ERR_MSG("FEATURE_ENABLE write fail\n");
 					return -EIO;
 				}
+#endif
 				if (unlikely(touch_i2c_write_byte(client, FEATURE_ENABLE, 0x1) < 0)) {
 					TOUCH_ERR_MSG("FEATURE_ENABLE write fail\n");
 					return -EIO;
@@ -2126,16 +2152,23 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 
 #endif
 
-					if (touch_i2c_write(ts->client, DOUBLE_TAP_AREA_REG, (10), r_mem) < 0){
+					if (touch_i2c_write(ts->client, DOUBLE_TAP_AREA_REG, (10), r_mem) < 0) {
 						TOUCH_ERR_MSG("DOUBLE_TAP_AREA_REG write fail");
-						if(r_mem != NULL) kfree(r_mem);
-						return -EIO;
-						}
+#ifndef CONFIG_MACH_MSM8974_G2_OPEN_COM
+						if (r_mem != NULL)
+							kfree(r_mem);
+							return -EIO;
+#endif
+					}
 #ifdef CONFIG_LGE_SECURITY_KNOCK_ON
 					if (unlikely(touch_i2c_write_byte(client, PAGE_SELECT_REG, LPWG_CTRL_PAGE) < 0)) {
 						TOUCH_ERR_MSG("PAGE_SELECT_REG write fail\n");
 						return -EIO;
 					}
+#if !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM) || \
+		!defined(CONFIG_MACH_MSM8974_G2_CA) || \
+		!defined(CONFIG_MACH_MSM8974_G2_KR) || \
+		!defined(CONFIG_MACH_MSM8974_G2_VZW)
 					*(r_mem+0) = 0x64;	//50(5mm) -> 100 (10mm)
 					if (touch_i2c_write(client, MULTITAP_PRESS_RELEASE_DISTANCE, 1, r_mem) < 0) {
 						TOUCH_ERR_MSG("MultiTap Press Release Distance reg(0x04P:0x34) write fail\n");
@@ -2144,14 +2177,17 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					} else {
 						TOUCH_INFO_MSG("MultiTap Press Release Distance = 0x%02x\n", *(r_mem+0));
 					}
+#endif
 					if (touch_i2c_read(client, INTERTAP_DISTANCE_REG, 1, r_mem) < 0) {
-						if(r_mem != NULL) kfree(r_mem);
+						if (r_mem != NULL)
+							kfree(r_mem);
 						TOUCH_ERR_MSG("INTERTAP_DISTANCE_REG read fail!\n");
 						return -EIO;
 					} else {
 						*(r_mem+0) = 0x0A;
-						if(touch_i2c_write(client, INTERTAP_DISTANCE_REG, 1, r_mem) < 0) {
-							if(r_mem != NULL) kfree(r_mem);
+						if (touch_i2c_write(client, INTERTAP_DISTANCE_REG, 1, r_mem) < 0) {
+							if (r_mem != NULL)
+								kfree(r_mem);
 							TOUCH_ERR_MSG("Double TAP Maximum InterTap Distance reg(0x04P:0x4B) write fail\n");
 							return -EIO;
 						} else {
@@ -2201,7 +2237,14 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					*(r_mem+2) = 0x3;
 #endif
 #endif
+#if defined(CONFIG_MACH_MSM8974_G2_ATT) || \
+		defined(CONFIG_MACH_MSM8974_G2_TMO_US) || \
+		defined(CONFIG_MACH_MSM8974_G2_SPR) || \
+		defined(CONFIG_MACH_MSM8974_G2_VZW)
 					*(r_mem+3) = 0xA; /* max active duration 3sec(0x6) -> 5sec(0xA) */
+#else
+					*(r_mem+3) = 0x6;
+#endif
 					*(r_mem+4) = 0x2;
 					*(r_mem+5) = 0x2;
 
@@ -2236,25 +2279,29 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 #else
 					if (touch_i2c_write(ts->client, WAKEUP_GESTURE_ENABEL_REG, (6), r_mem) < 0) {
 						TOUCH_ERR_MSG("WAKEUP_GESTURE_ENABEL_REG write fail");
-								if (r_mem != NULL)	kfree(r_mem);
-								return -EIO;
+						if (r_mem != NULL)
+							kfree(r_mem);
+						return -EIO;
 					}
 #endif
 					if (touch_i2c_write_byte(ts->client, DOZE_INTERVAL_REG, 5) < 0) {
 						TOUCH_ERR_MSG("DOZE_INTERVAL_REG write fail");
-						if (r_mem != NULL) kfree(r_mem);
+						if (r_mem != NULL)
+							kfree(r_mem);
 						return -EIO;
 					}
 #if defined(CONFIG_LGE_Z_TOUCHSCREEN)
 					if(touch_i2c_write_byte(ts->client, 0x10, 20) < 0) {
 						TOUCH_ERR_MSG("DOZE_WAKEUP_TRESHOLD_REG write fail");
-						if(r_mem != NULL) kfree(r_mem);
+						if(r_mem != NULL)
+							kfree(r_mem);
 						return -EIO;
 					}
 #else
 					if(touch_i2c_write_byte(ts->client, 0x10, 30) < 0) {
 						TOUCH_ERR_MSG("DOZE_WAKEUP_TRESHOLD_REG write fail");
-						if(r_mem != NULL) kfree(r_mem);
+						if(r_mem != NULL)
+							kfree(r_mem);
 						return -EIO;
 					}
 #endif
@@ -2304,10 +2351,13 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 						*(r_mem+9) = 50;
 #endif
 #endif
-					if (touch_i2c_write(ts->client, DOUBLE_TAP_AREA_REG, (10), r_mem) < 0){
+					if (touch_i2c_write(ts->client, DOUBLE_TAP_AREA_REG, (10), r_mem) < 0) {
 						TOUCH_ERR_MSG("DOUBLE_TAP_AREA_REG write fail");
-						if(r_mem != NULL) kfree(r_mem);
+#ifndef CONFIG_MACH_MSM8974_G2_OPEN_COM
+						if (r_mem != NULL)
+							kfree(r_mem);
 						return -EIO;
+#endif
 					}
 
 					if (unlikely(touch_i2c_write_byte(client, PAGE_SELECT_REG, LPWG_CTRL_PAGE) < 0)) {
@@ -2328,6 +2378,10 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 							TOUCH_INFO_MSG("MultiTap Maximum InterTap Time = 0x%02x\n", *(r_mem+0));
 						}
 					}
+#if !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM) || \
+		!defined(CONFIG_MACH_MSM8974_G2_CA) || \
+		!defined(CONFIG_MACH_MSM8974_G2_KR) || \
+		!defined(CONFIG_MACH_MSM8974_G2_VZW)
 					*(r_mem+0) = 0x64;
 					if (touch_i2c_write(client, MULTITAP_PRESS_RELEASE_DISTANCE, 1, r_mem) < 0) {
 							TOUCH_ERR_MSG("MultiTap press release distance reg(0x04P:0x33) write fail\n");
@@ -2336,6 +2390,7 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					} else {
 							TOUCH_INFO_MSG("MultiTap press release distance = 0x%02x\n", *(r_mem+0));
 					}
+#endif
 					if (touch_i2c_read(client, INTERTAP_DISTANCE_REG, 1, r_mem) < 0) {
 						if(r_mem != NULL) kfree(r_mem);
 						TOUCH_ERR_MSG("INTERTAP_DISTANCE_REG read fail!\n");
@@ -2439,6 +2494,11 @@ err_t synaptics_ts_lpwg(struct i2c_client* client, u32 code, u32 value, struct p
 			for(i=0;i< ts->password_tap_count;i++) {
 				data[i].x = lpwg_data[4*i+1]<<8 | lpwg_data[4*i];
 				data[i].y = lpwg_data[4*i+3]<<8 | lpwg_data[4*i+2];
+#if defined(KNOCKON_MASK)
+				TOUCH_DEBUG_MSG("TAP Position x:XXX, y:XXX\n");
+#else
+				TOUCH_DEBUG_MSG("TAP Position x:0x%x, y:0x%x\n", data[i].x, data[i].y);
+#endif
 				// '-1' should be assinged to the last data.
 				// Each data should be converted to LCD-resolution.
 			}

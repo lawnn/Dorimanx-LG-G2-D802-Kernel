@@ -87,6 +87,52 @@ struct cpu_freq {
 
 static DEFINE_PER_CPU(struct cpu_freq, cpu_freq_info);
 
+#ifdef CONFIG_MSM_CPUFREQ_LIMITER
+static unsigned int upper_limit_freq[NR_CPUS] = {2265600, 2265600,
+						2265600, 2265600};
+static unsigned int lower_limit_freq[NR_CPUS] = {0, 0, 0, 0};
+
+unsigned int get_cpu_min_lock(unsigned int cpu)
+{
+	if (cpu >= 0 && cpu < NR_CPUS)
+		return lower_limit_freq[cpu];
+	else
+		return 0;
+}
+EXPORT_SYMBOL(get_cpu_min_lock);
+
+void set_cpu_min_lock(unsigned int cpu, int freq)
+{
+	if (cpu >= 0 && cpu < NR_CPUS) {
+		if (freq <= 300000 || freq > 2803200)
+			lower_limit_freq[cpu] = 0;
+		else
+			lower_limit_freq[cpu] = freq;
+	}
+}
+EXPORT_SYMBOL(set_cpu_min_lock);
+
+unsigned int get_max_lock(unsigned int cpu)
+{
+	if (cpu >= 0 && cpu < NR_CPUS)
+		return upper_limit_freq[cpu];
+	else
+		return 0;
+}
+EXPORT_SYMBOL(get_max_lock);
+
+void set_max_lock(unsigned int cpu, unsigned int freq)
+{
+	if (cpu >= 0 && cpu <= NR_CPUS) {
+		if (freq <= 300000 || freq > 2803200)
+			upper_limit_freq[cpu] = 0;
+		else
+			upper_limit_freq[cpu] = freq;
+	}
+}
+EXPORT_SYMBOL(set_max_lock);
+#endif
+
 static int speed_bin, pvs_bin;
 void set_speed_pvs_bin(int speed, int pvs)
 {
@@ -144,6 +190,27 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 	struct cpu_freq *limit = &per_cpu(cpu_freq_info, policy->cpu);
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 	struct cpufreq_frequency_table *table;
+#ifdef CONFIG_MSM_CPUFREQ_LIMITER
+	unsigned int ll_freq = lower_limit_freq[policy->cpu];
+	unsigned int ul_freq = upper_limit_freq[policy->cpu];
+
+	if (ll_freq || ul_freq) {
+		unsigned int t_freq = new_freq;
+
+		if (ll_freq && new_freq < ll_freq)
+			t_freq = ll_freq;
+
+		if (ul_freq && new_freq > ul_freq)
+			t_freq = ul_freq;
+
+		new_freq = t_freq;
+
+		if (new_freq < policy->min)
+			new_freq = policy->min;
+		if (new_freq > policy->max)
+			new_freq = policy->max;
+	}
+#endif
 
 	if (limit->limits_init) {
 		if (new_freq > limit->allowed_max) {
@@ -340,6 +407,7 @@ int msm_cpufreq_set_freq_limits(uint32_t cpu, uint32_t min, uint32_t max)
 }
 EXPORT_SYMBOL(msm_cpufreq_set_freq_limits);
 
+/* This function is used in MSM_THERMAL DRIVER */
 int msm_cpufreq_get_index(struct cpufreq_policy *policy, unsigned int freq)
 {
 	int index;
@@ -375,6 +443,14 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 	if (cpu_is_msm8625() || cpu_is_msm8625q() || cpu_is_msm8226()
 		|| cpu_is_msm8610() || (is_clk && is_sync))
 		cpumask_setall(policy->cpus);
+
+	cpu_work = &per_cpu(cpufreq_work, policy->cpu);
+	INIT_WORK(&cpu_work->work, set_cpu_work);
+	init_completion(&cpu_work->complete);
+
+	/* synchronous cpus share the same policy */
+	if (is_clk && !cpu_clk[policy->cpu])
+		return 0;
 
 	if (cpufreq_frequency_table_cpuinfo(policy, table)) {
 #ifdef CONFIG_MSM_CPU_FREQ_SET_MIN_MAX
@@ -419,10 +495,6 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency =
 		acpuclk_get_switch_time() * NSEC_PER_USEC;
 
-	cpu_work = &per_cpu(cpufreq_work, policy->cpu);
-	INIT_WORK(&cpu_work->work, set_cpu_work);
-	init_completion(&cpu_work->complete);
-
 	return 0;
 }
 
@@ -449,22 +521,38 @@ static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 	 * before the CPU is brought up.
 	 */
 	case CPU_DEAD:
-	case CPU_UP_CANCELED:
 		if (is_clk) {
 			clk_disable_unprepare(cpu_clk[cpu]);
 			clk_disable_unprepare(l2_clk);
 			update_l2_bw(NULL);
 		}
 		break;
+	case CPU_UP_CANCELED:
+		if (is_clk) {
+			clk_unprepare(cpu_clk[cpu]);
+			clk_unprepare(l2_clk);
+			update_l2_bw(NULL);
+		}
+		break;
 	case CPU_UP_PREPARE:
 		if (is_clk) {
-			rc = clk_prepare_enable(l2_clk);
+			rc = clk_prepare(l2_clk);
 			if (rc < 0)
 				return NOTIFY_BAD;
-			rc = clk_prepare_enable(cpu_clk[cpu]);
+			rc = clk_prepare(cpu_clk[cpu]);
 			if (rc < 0)
 				return NOTIFY_BAD;
 			update_l2_bw(&cpu);
+		}
+		break;
+	case CPU_STARTING:
+		if (is_clk) {
+			rc = clk_enable(l2_clk);
+			if (rc < 0)
+				return NOTIFY_BAD;
+			rc = clk_enable(cpu_clk[cpu]);
+			if (rc < 0)
+				return NOTIFY_BAD;
 		}
 		break;
 	default:

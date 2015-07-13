@@ -20,6 +20,7 @@
 #include <linux/qpnp/clkdiv.h>
 #include <linux/regulator/consumer.h>
 #include <linux/io.h>
+#include <linux/of.h>
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
@@ -86,6 +87,13 @@ static int msm8974_auxpcm_rate = 8000;
 #ifdef CONFIG_MACH_LGE
 bool mbhc_enabled;
 #endif
+
+static int mbhc_disabled = 0;
+
+int is_mbhc_disabled(void)
+{
+	return mbhc_disabled;
+}
 
 static void *adsp_state_notifier;
 
@@ -178,7 +186,11 @@ static struct wcd9xxx_mbhc_config mbhc_cfg = {
 	.mclk_rate = TAIKO_EXT_CLK_RATE,
 	.gpio = 0,
 	.gpio_irq = 0,
+#ifdef CONFIG_MACH_LGE
+	.gpio_level_insert = 0,
+#else
 	.gpio_level_insert = 1,
+#endif
 	.detect_extn_cable = true,
 	.micbias_enable_flags = 1 << MBHC_MICBIAS_ENABLE_THRESHOLD_HEADSET,
 	.insert_detect = true,
@@ -2374,7 +2386,7 @@ static struct snd_soc_dai_link msm8974_common_dai_links[] = {
 		.codec_name = "snd-soc-dummy",
 		.be_id = MSM_FRONTEND_DAI_LSM1,
 	},
-#ifdef CONFIG_SND_FM_RADIO
+#if defined(CONFIG_SND_FM_RADIO) && !defined(CONFIG_MACH_MSM8974_G2_SPR)
     {
 		.name = "MI2S_TX Hostless",
 		.stream_name = "MI2S_TX Hostless",
@@ -2430,7 +2442,7 @@ static struct snd_soc_dai_link msm8974_common_dai_links[] = {
 		.name = "MSM8974 Compress8",
 		.stream_name = "Compress8",
 		.cpu_dai_name	= "MultiMedia8",
-		.platform_name  = "msm-compress-dsp",
+		.platform_name  = "msm-compr-dsp",
 		.dynamic = 1,
 		.async_ops = ASYNC_DPCM_SND_SOC_PREPARE
 			| ASYNC_DPCM_SND_SOC_HW_PARAMS,
@@ -2507,6 +2519,24 @@ static struct snd_soc_dai_link msm8974_common_dai_links[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
+/* radio define for LS980 ZVE */
+#if defined(CONFIG_SND_FM_RADIO) && defined(CONFIG_MACH_MSM8974_G2_SPR)
+	{
+		.name = "MI2S_TX Hostless",
+		.stream_name = "MI2S_TX Hostless",
+		.cpu_dai_name   = "MI2S_TX_HOSTLESS",
+		.platform_name  = "msm-pcm-hostless",
+		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+	},
+#endif
 	{
 		.name = "MSM8974 HFP TX",
 		.stream_name = "MultiMedia6",
@@ -3523,6 +3553,16 @@ skip_sec:
 			"qcom,mbhc-gpio-level-insert", &tmp);
 	if (!ret)
 		mbhc_cfg.gpio_level_insert = (int)tmp;
+
+	/* check if mbhc is used or not */
+	ret = of_property_read_u32(pdev->dev.of_node, "qcom,mbhc-disabled", &mbhc_disabled);
+	if (ret) {
+		dev_err(&pdev->dev, "Looking up %s property failed..set mbhc_disabled\n",
+			"qcom,mbhc-disabled");
+		mbhc_disabled = 0;
+	}
+
+	dev_info(&pdev->dev,"%s() MBHC disabled = %d\n", __func__, mbhc_disabled);
 
 	ret = of_property_read_string(pdev->dev.of_node,
 			"qcom,prim-auxpcm-gpio-set", &auxpcm_pri_gpio_set);

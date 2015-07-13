@@ -47,10 +47,6 @@ static struct dsi_panel_cmds lge_ief_off_cmds;
 #endif
 
 #ifdef CONFIG_LGE_LCD_TUNING
-/* LGE_CHANGE_S
- * Add code to apply tuning method for LCD
- * 2012-12-03, minjong.gong@lge.com
- */
 extern int num_cmds;
 extern int tun_len;
 extern char init_buf[TUNING_REGSIZE];
@@ -310,10 +306,6 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 				panel_data);
 
 #ifndef CONFIG_MACH_LGE
-	/* LGE_CHANGE_S
-	 * power sequence for LGD_FHD panel
-	 * 2013-04-05, yeonjun.kim@lge.com
-	 */
 	if (!gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
 		pr_debug("%s:%d, reset line not configured\n",
 			   __func__, __LINE__);
@@ -356,10 +348,6 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 	} else {
 		gpio_set_value((ctrl_pdata->rst_gpio), 0);
 #ifndef CONFIG_MACH_LGE
-		/* LGE_CHANGE_S
-		 * power sequence for LGD_FHD panel
-		 * 2013-04-05, yeonjun.kim@lge.com
-		 */
 		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
 #endif
@@ -502,10 +490,6 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 
 	if (ctrl->on_cmds.cmd_cnt)
 #ifdef CONFIG_LGE_LCD_TUNING
-		/* LGE_CHANGE
-		 * Implement for LCD init sequence tuning
-		 * 2013-01-25, baryun.hwang@lge.com
-		 */
 		mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
 				tun_dsi_panel_on_cmds,
 				num_of_on_cmds);

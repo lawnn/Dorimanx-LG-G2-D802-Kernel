@@ -24,6 +24,7 @@
 #include <linux/tick.h>
 #include <linux/suspend.h>
 #include <linux/pm_qos.h>
+#include <linux/quickwakeup.h>
 #include <linux/of_platform.h>
 #include <mach/mpm.h>
 #include <mach/cpuidle.h>
@@ -213,9 +214,6 @@ static int lpm_set_l2_mode(struct lpm_system_state *system_state,
 
 	switch (sleep_mode) {
 	case MSM_SPM_L2_MODE_POWER_COLLAPSE:
-#ifndef CONFIG_LGE_PM
-		pr_info("Configuring for L2 power collapse\n");
-#endif
 		msm_pm_set_l2_flush_flag(MSM_SCM_L2_OFF);
 		break;
 	case MSM_SPM_L2_MODE_GDHS:
@@ -351,7 +349,7 @@ static void lpm_system_prepare(struct lpm_system_state *system_state,
 		return;
 	}
 
-	if (from_idle && !timekeeping_suspended) {
+	if (from_idle) {
 		dbg_mask = lpm_lvl_dbg_msk & MSM_LPM_LVL_DBG_IDLE_LIMITS;
 		us = ktime_to_us(ktime_sub(bc->next_event, ktime_get()));
 		nextcpu = bc->cpumask;
@@ -549,11 +547,6 @@ static noinline int lpm_cpu_power_select(struct cpuidle_device *dev, int *index)
 			if (!dev->cpu && msm_rpm_waiting_for_ack())
 					break;
 
-		if ((MSM_PM_SLEEP_MODE_POWER_COLLAPSE == mode)
-				&& (num_online_cpus() > 1)
-				&& !sys_state.allow_synched_levels)
-			continue;
-
 		if ((next_wakeup_us >> 10) > pwr->time_overhead_us) {
 			power = pwr->ss_power;
 		} else {
@@ -566,7 +559,7 @@ static noinline int lpm_cpu_power_select(struct cpuidle_device *dev, int *index)
 		if (best_level_pwr >= power) {
 			best_level = i;
 			best_level_pwr = power;
-			if (next_event_us < sleep_us &&
+			if (next_event_us && next_event_us < sleep_us &&
 				(mode != MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT))
 				modified_time_us = next_event_us
 							- pwr->latency_us;
@@ -718,7 +711,7 @@ static int lpm_system_select(struct lpm_system_state *system_state,
 	if (!ed)
 		return -EINVAL;
 
-	if (from_idle && !timekeeping_suspended)
+	if (from_idle)
 		us = ktime_to_us(ktime_sub(ed->next_event, ktime_get()));
 	else
 		us = (~0ULL);
@@ -748,13 +741,8 @@ static void lpm_enter_low_power(struct lpm_system_state *system_state,
 static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 		struct cpuidle_driver *drv, int index)
 {
-	int64_t time;
+	int64_t time = ktime_to_ns(ktime_get());
 	int idx;
-
-	if (!timekeeping_suspended)
-		time = ktime_to_ns(ktime_get());
-	else
-		time = (~0ULL);
 
 	idx = menu_select ? lpm_cpu_menu_select(dev, &index) :
 			lpm_cpu_power_select(dev, &index);
@@ -765,11 +753,7 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 
 	lpm_enter_low_power(&sys_state, idx, true);
 
-	if (!timekeeping_suspended)
-		time = ktime_to_ns(ktime_get()) - time;
-	else
-		time = (~0ULL);
-
+	time = ktime_to_ns(ktime_get()) - time;
 	do_div(time, 1000);
 	dev->last_residency = (int)time;
 	local_irq_enable();
@@ -829,6 +813,7 @@ static const struct platform_suspend_ops lpm_suspend_ops = {
 	.valid = suspend_valid_only_mem,
 	.prepare_late = lpm_suspend_prepare,
 	.wake = lpm_suspend_wake,
+	.suspend_again = quickwakeup_suspend_again,
 };
 
 static void setup_broadcast_timer(void *arg)
@@ -998,9 +983,8 @@ static int lpm_system_probe(struct platform_device *pdev)
 			goto fail;
 		}
 
-		if (l->l2_mode == MSM_SPM_L2_MODE_GDHS ||
-				l->l2_mode == MSM_SPM_L2_MODE_POWER_COLLAPSE)
-			l->notify_rpm = true;
+		key = "qcom,send-rpm-sleep-set";
+		l->notify_rpm = of_property_read_bool(node, key);
 
 		if (l->l2_mode >= MSM_SPM_L2_MODE_GDHS)
 			l->sync = true;

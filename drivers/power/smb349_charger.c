@@ -66,6 +66,7 @@
 
 #ifdef CONFIG_FORCE_FAST_CHARGE
 #include <linux/fastchg.h>
+static DEFINE_MUTEX(smb349_fast_charge_lock);
 #endif
 
 /* Register definitions */
@@ -681,6 +682,7 @@ rt_error:
 	return false;
 }
 
+static int power_source_state = 0;
 static bool smb349_is_charger_present(struct i2c_client *client)
 {
 	u8 irq_status_e;
@@ -702,13 +704,16 @@ static bool smb349_is_charger_present(struct i2c_client *client)
 
 	if (power_ok) {
 		voltage = smb349_get_usbin_adc();
+		power_source_state = 1;
 #if SMB349_BOOSTBACK_WORKAROUND
 		smb349_pr_info("DC is present. DC_IN volt:%d\n", voltage);
 #else
 		pr_err("DC is present. DC_IN volt:%d\n", voltage);
 #endif
-	} else
+	} else {
 		pr_err("DC is missing.\n");
+		power_source_state = 0;
+	}
 
 	return power_ok;
 }
@@ -1667,6 +1672,15 @@ static int
 smb349_set_thermal_chg_current_set(const char *val, struct kernel_param *kp)
 {
 	int ret;
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	int batt_state_check = 0;
+	int batt_temp = 0;
+	int batt_charge = 0;
+	int new_thermal_mitigation = 0;
+	int current_now = 0;
+	union power_supply_propval pwr = {0,};
+	struct smb349_struct *smb349_chg = the_smb349_chg;
+#endif
 
 	ret = param_set_int(val, kp);
 	if (ret) {
@@ -1674,22 +1688,109 @@ smb349_set_thermal_chg_current_set(const char *val, struct kernel_param *kp)
 		return ret;
 	}
 
-	if (!the_smb349_chg) {
+	if (!smb349_chg) {
 		pr_err("called before init\n");
 		return ret;
 	}
 #ifdef CONFIG_LGE_THERMALE_CHG_CONTROL
-	pr_err("thermal-engine set chg current to %d\n",
-			smb349_thermal_mitigation);
 
 	if (is_factory_cable()) {
 		pr_err("thermal-engine chg current control not permitted\n");
 		return 0;
 	} else {
-		the_smb349_chg->chg_current_te = smb349_thermal_mitigation;
+#ifdef CONFIG_FORCE_FAST_CHARGE
+		mutex_lock(&smb349_fast_charge_lock);
+		batt_temp = smb349_get_prop_batt_temp(smb349_chg);
+		batt_charge = smb349_get_prop_batt_capacity(smb349_chg);
 
-		cancel_delayed_work_sync(&the_smb349_chg->battemp_work);
-		schedule_delayed_work(&the_smb349_chg->battemp_work, HZ*1);
+		smb349_chg->batt_psy.get_property(&(smb349_chg->batt_psy),
+				POWER_SUPPLY_PROP_CURRENT_NOW, &pwr);
+		current_now = pwr.intval / 1000;
+
+		if (batt_charge >= 95) {
+			batt_state_check = 1;
+			if (force_fast_charge != 0) {
+				force_fast_charge_on_off = force_fast_charge;
+				force_fast_charge = 0;
+				pr_info("thermal-engine: FFC disabled! battery is above 95 percent\n");
+			}
+		} else {
+			if (force_fast_charge != force_fast_charge_on_off)
+				force_fast_charge = force_fast_charge_on_off;
+			if (force_fast_charge != 0)
+				pr_info("thermal-engine: FFC active! battery is below 95 percent\n");
+		}
+
+		if (batt_temp >= 550)
+			batt_state_check = 2;
+
+		if (force_fast_charge == 2) {
+			switch (fast_charge_level) {
+				case FAST_CHARGE_300:
+					new_thermal_mitigation = 300;
+					break;
+				case FAST_CHARGE_500:
+					new_thermal_mitigation = 500;
+					break;
+				case FAST_CHARGE_900:
+					new_thermal_mitigation = 900;
+					break;
+				case FAST_CHARGE_1200:
+					new_thermal_mitigation = 1200;
+					break;
+				case FAST_CHARGE_1600:
+					new_thermal_mitigation = 1600;
+					break;
+				default:
+					break;
+			}
+#ifndef CONFIG_SMB349_VZW_FAST_CHG
+			if (usb_power_curr_now == 500) {
+				if (new_thermal_mitigation != 300) {
+					if (new_thermal_mitigation > 900)
+						new_thermal_mitigation = 900;
+				}
+			}
+#endif
+		} else if (force_fast_charge == 1) {
+#ifndef CONFIG_SMB349_VZW_FAST_CHG
+			if (usb_power_curr_now == 500) {
+				if (new_thermal_mitigation > 900)
+					new_thermal_mitigation = 900;
+			} else
+#endif
+				new_thermal_mitigation = 1200;
+		} else if (!force_fast_charge)
+			new_thermal_mitigation = smb349_thermal_mitigation;
+
+		if (batt_state_check == 1)
+			new_thermal_mitigation = 400;
+		else if (batt_state_check == 2)
+			new_thermal_mitigation = 300;
+
+		pr_info("thermal-engine: requested_thermal mitigation %d, new_thermal mitigation=%d, battery temp=%d, battery capacity=%d\n",
+				smb349_thermal_mitigation,
+				new_thermal_mitigation, batt_temp,
+				smb349_get_prop_batt_capacity(smb349_chg));
+#ifndef CONFIG_SMB349_VZW_FAST_CHG
+		pr_info("thermal-engine: usb_power_curr_now=%d, charge current=%d\n",
+				usb_power_curr_now,
+				current_now);
+#endif
+		if (new_thermal_mitigation != smb349_chg->chg_current_te) {
+			smb349_chg->chg_current_te = new_thermal_mitigation;
+			cancel_delayed_work_sync(&smb349_chg->battemp_work);
+			schedule_delayed_work(&smb349_chg->battemp_work, HZ*1);
+			/* update smb349_thermal_mitigation */
+			smb349_thermal_mitigation = new_thermal_mitigation;
+			pr_info("thermal-engine: restarting battemp_work\n");
+		}
+		mutex_unlock(&smb349_fast_charge_lock);
+#else
+		smb349_chg->chg_current_te = smb349_thermal_mitigation;
+		cancel_delayed_work_sync(&smb349_chg->battemp_work);
+		schedule_delayed_work(&smb349_chg->battemp_work, HZ*1);
+#endif
 	}
 #else
 	pr_err("thermal-engine chg current control not enabled\n");
@@ -1698,6 +1799,98 @@ smb349_set_thermal_chg_current_set(const char *val, struct kernel_param *kp)
 }
 module_param_call(smb349_thermal_mitigation, smb349_set_thermal_chg_current_set,
 	param_get_uint, &smb349_thermal_mitigation, 0644);
+
+#if defined(CONFIG_FORCE_FAST_CHARGE) && !defined(CONFIG_SMB349_VZW_FAST_CHG)
+/*
+ * This function is protected by mutex
+ * from caller in drivers/usb/dwc3/dwc3_otg.c
+ */
+int smb349_thermal_mitigation_update(int value)
+{
+	int batt_state_check = 0;
+	int batt_temp = 0;
+	int batt_charge = 0;
+	int new_thermal_mitigation = 0;
+	struct smb349_struct *smb349_chg = the_smb349_chg;
+	struct i2c_client *client = smb349_chg->client;
+
+#ifdef CONFIG_LGE_THERMALE_CHG_CONTROL
+	if (!smb349_chg || (value == 300 &&
+			smb349_chg->chg_current_te == 1600) ||
+			!smb349_is_charger_present(client) ||
+			smb349_chg->suspended == 1 ||
+			is_factory_cable()) {
+		smb349_thermal_mitigation = 1600;
+		pr_info("thermal-engine: mitigation_update ignored.\n");
+		return 0;
+	} else {
+		batt_temp = smb349_get_prop_batt_temp(smb349_chg);
+		batt_charge = smb349_get_prop_batt_capacity(smb349_chg);
+
+		if (batt_charge >= 95)
+			batt_state_check = 1;
+
+		if (batt_temp >= 550)
+			batt_state_check = 2;
+
+		if (force_fast_charge == 2) {
+			switch (fast_charge_level) {
+				case FAST_CHARGE_300:
+					new_thermal_mitigation = 300;
+					break;
+				case FAST_CHARGE_500:
+					new_thermal_mitigation = 500;
+					break;
+				case FAST_CHARGE_900:
+					new_thermal_mitigation = 900;
+					break;
+				case FAST_CHARGE_1200:
+					new_thermal_mitigation = 1200;
+					break;
+				case FAST_CHARGE_1600:
+					new_thermal_mitigation = 1600;
+					break;
+				default:
+					break;
+			}
+			if (value == 500) {
+				if (new_thermal_mitigation != 300) {
+					if (new_thermal_mitigation > 900)
+						new_thermal_mitigation = 900;
+				}
+			} else if (value == 300)
+				new_thermal_mitigation = 1600;
+		} else if (force_fast_charge == 1) {
+			if (value == 500) {
+				if (new_thermal_mitigation > 900)
+					new_thermal_mitigation = 900;
+			} else if (value == 300)
+				new_thermal_mitigation = 1600;
+			else if (value > 500)
+				new_thermal_mitigation = 1200;
+		} else if (!force_fast_charge)
+			new_thermal_mitigation = value;
+
+		if (batt_state_check == 1)
+			new_thermal_mitigation = 400;
+		else if (batt_state_check == 2)
+			new_thermal_mitigation = 300;
+
+		if (new_thermal_mitigation != smb349_chg->chg_current_te) {
+			smb349_chg->chg_current_te = new_thermal_mitigation;
+			cancel_delayed_work_sync(&smb349_chg->battemp_work);
+			schedule_delayed_work(&smb349_chg->battemp_work, HZ*1);
+			/* update smb349_thermal_mitigation */
+			smb349_thermal_mitigation = new_thermal_mitigation;
+			pr_info("thermal-engine: restarting battemp_work\n");
+		}
+	}
+#else
+	pr_err("thermal-engine chg current control not enabled\n");
+#endif
+	return 0;
+}
+#endif /* CONFIG_FORCE_FAST_CHARGE */
 #endif
 
 struct input_current_ma_limit_entry {
@@ -2279,11 +2472,6 @@ static void smb349_irq_worker(struct work_struct *work)
 	int wlc_present =0;
 #endif
 
-#ifdef CONFIG_FORCE_FAST_CHARGE
-	int batt_temp_check;
-	int new_thermal_mitigation = 500;
-#endif
-
 	struct smb349_struct *smb349_chg =
 		container_of(work, struct smb349_struct, irq_work.work);
 #if SMB349_BOOSTBACK_WORKAROUND
@@ -2370,61 +2558,6 @@ static void smb349_irq_worker(struct work_struct *work)
 		pr_info("[TIMEOUT] timeout val : 0x%02X\n", irqstat[IRQSTAT_D]);
 		smb349_chg_timeout(0);
 	}
-
-#ifdef CONFIG_FORCE_FAST_CHARGE
-
-	mutex_lock(&smb349_chg->lock);
-
-	if (smb349_chg->btm_state == BTM_HEALTH_OVERHEAT)
-		batt_temp_check = 1;
-	else
-		batt_temp_check = 0;
-
-	if (force_fast_charge == 2) {
-		switch (fast_charge_level) {
-			case FAST_CHARGE_500:
-				new_thermal_mitigation = 500;
-				break;
-			case FAST_CHARGE_900:
-				new_thermal_mitigation = 900;
-				break;
-			case FAST_CHARGE_1200:
-				new_thermal_mitigation = 1200;
-				break;
-			case FAST_CHARGE_1500:
-				new_thermal_mitigation = 1500;
-				break;
-			case FAST_CHARGE_1800:
-				new_thermal_mitigation = 1800;
-				break;
-			case FAST_CHARGE_2000:
-				new_thermal_mitigation = 2000;
-				break;
-			default:
-				break;
-		}
-	} else {
-		new_thermal_mitigation = 1600;
-	}
-
-	/*
-	 * if batt_temp_check = 1 then battery is 55c or more!
-	 * stop fast charge and set max 300ma
-	 */
-	if ((batt_temp_check == 1) && (smb349_thermal_mitigation != 300)) {
-		smb349_thermal_mitigation = 300;
-		the_smb349_chg->chg_current_te = smb349_thermal_mitigation;
-		cancel_delayed_work_sync(&the_smb349_chg->battemp_work);
-		schedule_delayed_work(&the_smb349_chg->battemp_work, HZ*1);
-	} else if (smb349_thermal_mitigation != new_thermal_mitigation) {
-		smb349_thermal_mitigation = new_thermal_mitigation;
-		the_smb349_chg->chg_current_te = smb349_thermal_mitigation;
-		cancel_delayed_work_sync(&the_smb349_chg->battemp_work);
-		schedule_delayed_work(&the_smb349_chg->battemp_work, HZ*1);
-	}
-
-	mutex_unlock(&smb349_chg->lock);
-#endif
 
 	if (irqstat[IRQSTAT_D] & BIT(5)) {
 		ret = smb349_read_reg(smb349_chg->client, STATUS_E_REG, &val);
@@ -2636,7 +2769,7 @@ static int pm_power_get_property(struct power_supply *psy,
 	return 0;
 }
 
-#define SMB349_FAST_CHG_MIN_MA	1000
+#define SMB349_FAST_CHG_MIN_MA	400
 #define SMB349_FAST_CHG_STEP_MA	200
 #define SMB349_FAST_CHG_MAX_MA	4000
 #define SMB349_FAST_CHG_SHIFT	4
@@ -3274,6 +3407,10 @@ static int smb349_input_current_limit_set(struct smb349_struct *smb349_chg, int 
 		icl_ma = custom_ma;
 	} else if (force_fast_charge == 2) {
 		switch (fast_charge_level) {
+			case FAST_CHARGE_300:
+				i = 0;
+				custom_ma = FAST_CHARGE_300;
+				break;
 			case FAST_CHARGE_500:
 				i = 0;
 				custom_ma = FAST_CHARGE_500;
@@ -3286,17 +3423,9 @@ static int smb349_input_current_limit_set(struct smb349_struct *smb349_chg, int 
 				i = 4;
 				custom_ma = FAST_CHARGE_1200;
 				break;
-			case FAST_CHARGE_1500:
-				i = 6;
-				custom_ma = FAST_CHARGE_1500;
-				break;
-			case FAST_CHARGE_1800:
-				i = 9;
-				custom_ma = FAST_CHARGE_1800;
-				break;
-			case FAST_CHARGE_2000:
-				i = 0xA;
-				custom_ma = FAST_CHARGE_2000;
+			case FAST_CHARGE_1600:
+				i = 7;
+				custom_ma = FAST_CHARGE_1600;
 				break;
 			default:
 				break;
@@ -3324,7 +3453,7 @@ static struct input_current_ma_limit_entry pchg_ma_table[] = {
 };
 
 #define SMB349_PRE_CHG_CURRENT_LIMIT_MIN_MA     100
-#define SMB349_PRE_CHG_CURRENT_LIMIT_MAX_MA     700
+#define SMB349_PRE_CHG_CURRENT_LIMIT_MAX_MA     900
 #define SMB349_PRE_CHG_CURRENT_LIMIT_DEFAULT    300
 static int
 smb349_set_pre_chg_current(struct smb349_struct *smb349_chg, int pchg_ma)
@@ -4198,6 +4327,9 @@ static void smb349_status_print(struct smb349_struct *smb349_chg)
 static int temp_before = 0;
 static void smb349_monitor_batt_temp(struct work_struct *work)
 {
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	int batt_charge = 0;
+#endif
 	struct smb349_struct *smb349_chg =
 		container_of(work, struct smb349_struct, battemp_work.work);
 	struct charging_info req;
@@ -4254,7 +4386,30 @@ static void smb349_monitor_batt_temp(struct work_struct *work)
 
 	req.is_charger = smb349_is_charger_present(smb349_chg->client);
 
-	lge_monitor_batt_temp(req, &res);
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	/*
+	 * Update force fast charge auto on/off status
+	 * every time temp check is running when not in suspend.
+	 */
+	mutex_lock(&smb349_fast_charge_lock);
+	if (usb_power_curr_now > 300) {
+		batt_charge = smb349_get_prop_batt_capacity(smb349_chg);
+		if (batt_charge >= 95) {
+			if (force_fast_charge != 0) {
+				force_fast_charge_on_off = force_fast_charge;
+				force_fast_charge = 0;
+				pr_info("thermal-engine: FFC disabled! battery is above 95 percent\n");
+			}
+		} else {
+			if (force_fast_charge != force_fast_charge_on_off)
+				force_fast_charge = force_fast_charge_on_off;
+		}
+	}
+	mutex_unlock(&smb349_fast_charge_lock);
+#endif
+
+	if (power_source_state)
+		lge_monitor_batt_temp(req, &res);
 
 #if SMB349_STATUS_DEBUG
 	smb349_status_print(smb349_chg);

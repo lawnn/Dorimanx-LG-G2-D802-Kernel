@@ -79,23 +79,6 @@ static inline void buffer_size_add(struct persistent_ram_zone *prz, size_t a)
 	} while (atomic_cmpxchg(&prz->buffer->size, old, new) != old);
 }
 
-/* increase the size counter, retuning an error if it hits the max size */
-static inline ssize_t buffer_size_add_clamp(struct persistent_ram_zone *prz,
-	size_t a)
-{
-	size_t old;
-	size_t new;
-
-	do {
-		old = atomic_read(&prz->buffer->size);
-		new = old + a;
-		if (new > prz->buffer_size)
-			return -ENOMEM;
-	} while (atomic_cmpxchg(&prz->buffer->size, old, new) != old);
-
-	return 0;
-}
-
 static void notrace persistent_ram_encode_rs8(struct persistent_ram_zone *prz,
 	uint8_t *data, size_t len, uint8_t *ecc)
 {
@@ -296,12 +279,15 @@ int notrace persistent_ram_write(struct persistent_ram_zone *prz,
 	int c = count;
 	size_t start;
 
+	if (unlikely(prz->buffer->sig != PERSISTENT_RAM_SIG))
+		return -EINVAL;
+
 	if (unlikely(c > prz->buffer_size)) {
 		s += c - prz->buffer_size;
 		c = prz->buffer_size;
 	}
 
-	buffer_size_add_clamp(prz, c);
+	buffer_size_add(prz, c);
 
 	start = buffer_start_add(prz, c);
 
@@ -398,31 +384,15 @@ static int __devinit persistent_ram_buffer_init(const char *name,
 	return -EINVAL;
 }
 
-static  __devinit
-struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
+static int __devinit persistent_ram_post_init(struct persistent_ram_zone *prz, bool ecc, struct persistent_ram *ram)
 {
-	struct persistent_ram *ram;
-	struct persistent_ram_zone *prz;
-	int ret = -ENOMEM;
-
-	prz = kzalloc(sizeof(struct persistent_ram_zone), GFP_KERNEL);
-	if (!prz) {
-		pr_err("persistent_ram: failed to allocate persistent ram zone\n");
-		goto err;
-	}
-
-	INIT_LIST_HEAD(&prz->node);
-
-	ret = persistent_ram_buffer_init(dev_name(dev), prz, &ram);
-	if (ret) {
-		pr_err("persistent_ram: failed to initialize buffer\n");
-		goto err;
-	}
+	int ret;
 
 	prz->ecc = ecc;
+
 	ret = persistent_ram_init_ecc(prz, prz->buffer_size, ram);
 	if (ret)
-		goto err;
+		return ret;
 
 	if (prz->buffer->sig == PERSISTENT_RAM_SIG) {
 		if (buffer_size(prz) > prz->buffer_size ||
@@ -444,6 +414,30 @@ struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
 	prz->buffer->sig = PERSISTENT_RAM_SIG;
 	atomic_set(&prz->buffer->start, 0);
 	atomic_set(&prz->buffer->size, 0);
+
+	return 0;
+}
+
+static  __devinit
+struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
+{
+	struct persistent_ram *ram;
+	struct persistent_ram_zone *prz;
+	int ret = -ENOMEM;
+
+	prz = kzalloc(sizeof(struct persistent_ram_zone), GFP_KERNEL);
+	if (!prz) {
+		pr_err("persistent_ram: failed to allocate persistent ram zone\n");
+		goto err;
+	}
+
+	ret = persistent_ram_buffer_init(dev_name(dev), prz, &ram);
+	if (ret) {
+		pr_err("persistent_ram: failed to initialize buffer\n");
+		goto err;
+	}
+
+	persistent_ram_post_init(prz, ecc, ram);
 
 	return prz;
 err:

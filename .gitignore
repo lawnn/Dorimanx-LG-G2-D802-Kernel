@@ -37,6 +37,12 @@ modules.builtin
 patch-3.*
 usr/initramfs_data.cpio.lz4
 
+READY-RELEASES/*.zip
+
+RECOVERY/*.zip
+RECOVERY/bumped_recovery/*.img
+RECOVERY/READY_RECOVERY/*.zip
+
 #
 # Top-level generic files
 #

@@ -83,7 +83,6 @@
 #include <linux/export.h>
 #include <linux/msg.h>
 #include <linux/shm.h>
-#include <linux/pft.h>
 
 #include "avc.h"
 #include "objsec.h"
@@ -437,6 +436,7 @@ next_inode:
 				list_entry(sbsec->isec_head.next,
 					   struct inode_security_struct, list);
 		struct inode *inode = isec->inode;
+		list_del_init(&isec->list);
 		spin_unlock(&sbsec->isec_lock);
 		inode = igrab(inode);
 		if (inode) {
@@ -445,7 +445,6 @@ next_inode:
 			iput(inode);
 		}
 		spin_lock(&sbsec->isec_lock);
-		list_del_init(&isec->list);
 		goto next_inode;
 	}
 	spin_unlock(&sbsec->isec_lock);
@@ -1653,15 +1652,9 @@ static int may_create(struct inode *dir,
 	if (rc)
 		return rc;
 
-	rc = avc_has_perm(newsid, sbsec->sid,
-			  SECCLASS_FILESYSTEM,
-			  FILESYSTEM__ASSOCIATE, &ad);
-	if (rc)
-		return rc;
-
-	rc = pft_inode_mknod(dir, dentry, 0, 0);
-
-	return rc;
+	return avc_has_perm(newsid, sbsec->sid,
+			    SECCLASS_FILESYSTEM,
+			    FILESYSTEM__ASSOCIATE, &ad);
 }
 
 /* Check whether a task can create a key. */
@@ -1720,12 +1713,6 @@ static int may_link(struct inode *dir,
 	}
 
 	rc = avc_has_perm(sid, isec->sid, isec->sclass, av, &ad);
-	if (rc)
-		return rc;
-
-	if (kind == MAY_UNLINK)
-		rc = pft_inode_unlink(dir, dentry);
-
 	return rc;
 }
 
@@ -2220,6 +2207,11 @@ static int selinux_bprm_secureexec(struct linux_binprm *bprm)
 	return (atsecure || cap_bprm_secureexec(bprm));
 }
 
+static int match_file(const void *p, struct file *file, unsigned fd)
+{
+	return file_has_perm(p, file, file_to_av(file)) ? fd + 1 : 0;
+}
+
 /* Derived from fs/exec.c:flush_old_files. */
 static inline void flush_unauthorized_files(const struct cred *cred,
 					    struct files_struct *files)
@@ -2228,9 +2220,8 @@ static inline void flush_unauthorized_files(const struct cred *cred,
 	struct selinux_audit_data sad = {0,};
 	struct file *file, *devnull = NULL;
 	struct tty_struct *tty;
-	struct fdtable *fdt;
-	long j = -1;
 	int drop_tty = 0;
+	unsigned n;
 
 	tty = get_current_tty();
 	if (tty) {
@@ -2265,59 +2256,20 @@ static inline void flush_unauthorized_files(const struct cred *cred,
 	COMMON_AUDIT_DATA_INIT(&ad, INODE);
 	ad.selinux_audit_data = &sad;
 
-	spin_lock(&files->file_lock);
-	for (;;) {
-		unsigned long set, i;
-		int fd;
+	n = iterate_fd(files, 0, match_file, cred);
+	if (!n) /* none found? */
+		return;
 
-		j++;
-		i = j * BITS_PER_LONG;
-		fdt = files_fdtable(files);
-		if (i >= fdt->max_fds)
-			break;
-		set = fdt->open_fds[j];
-		if (!set)
-			continue;
-		spin_unlock(&files->file_lock);
-		for ( ; set ; i++, set >>= 1) {
-			if (set & 1) {
-				file = fget(i);
-				if (!file)
-					continue;
-				if (file_has_perm(cred,
-						  file,
-						  file_to_av(file))) {
-					sys_close(i);
-					fd = get_unused_fd();
-					if (fd != i) {
-						if (fd >= 0)
-							put_unused_fd(fd);
-						fput(file);
-						continue;
-					}
-					if (devnull) {
-						get_file(devnull);
-					} else {
-						devnull = dentry_open(
-							dget(selinux_null),
-							mntget(selinuxfs_mount),
-							O_RDWR, cred);
-						if (IS_ERR(devnull)) {
-							devnull = NULL;
-							put_unused_fd(fd);
-							fput(file);
-							continue;
-						}
-					}
-					fd_install(fd, devnull);
-				}
-				fput(file);
-			}
-		}
-		spin_lock(&files->file_lock);
-
-	}
-	spin_unlock(&files->file_lock);
+	devnull = dentry_open(dget(selinux_null), mntget(selinuxfs_mount),
+			O_RDWR, cred);
+	if (IS_ERR(devnull))
+		devnull = NULL;
+	/* replace all the matching ones with this */
+	do {
+		replace_fd(n - 1, devnull, 0);
+	} while ((n = iterate_fd(files, n, match_file, cred)) != 0);
+	if (devnull)
+		fput(devnull);
 }
 
 /*
@@ -2732,23 +2684,7 @@ static int selinux_inode_init_security(struct inode *inode, struct inode *dir,
 
 static int selinux_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
-	int ret;
-
-	ret = pft_inode_create(dir, dentry, mode);
-	if (ret < 0)
-		return ret;
-
 	return may_create(dir, dentry, SECCLASS_FILE);
-}
-
-static int selinux_inode_post_create(struct inode *dir, struct dentry *dentry,
-				     umode_t mode)
-{
-	int ret;
-
-	ret = pft_inode_post_create(dir, dentry, mode);
-
-	return ret;
 }
 
 static int selinux_inode_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry)
@@ -2784,12 +2720,6 @@ static int selinux_inode_mknod(struct inode *dir, struct dentry *dentry, umode_t
 static int selinux_inode_rename(struct inode *old_inode, struct dentry *old_dentry,
 				struct inode *new_inode, struct dentry *new_dentry)
 {
-	int rc;
-
-	rc = pft_inode_rename(old_inode, old_dentry, new_inode, new_dentry);
-	if (rc)
-		return rc;
-
 	return may_rename(old_inode, old_dentry, new_inode, new_dentry);
 }
 
@@ -2869,10 +2799,6 @@ static int selinux_inode_getattr(struct vfsmount *mnt, struct dentry *dentry)
 static int selinux_inode_setotherxattr(struct dentry *dentry, const char *name)
 {
 	const struct cred *cred = current_cred();
-
-	if (pft_inode_set_xattr(dentry, name) < 0)
-		return -EACCES;
-
 
 	if (!strncmp(name, XATTR_SECURITY_PREFIX,
 		     sizeof XATTR_SECURITY_PREFIX - 1)) {
@@ -3097,15 +3023,10 @@ static int selinux_file_permission(struct file *file, int mask)
 	struct file_security_struct *fsec = file->f_security;
 	struct inode_security_struct *isec = inode->i_security;
 	u32 sid = current_sid();
-	int ret;
 
 	if (!mask)
 		/* No permission to check.  Existence test. */
 		return 0;
-
-	ret = pft_file_permission(file, mask);
-	if (ret < 0)
-		return ret;
 
 	if (sid == fsec->sid && fsec->isid == isec->sid &&
 	    fsec->pseqno == avc_policy_seqno())
@@ -3307,6 +3228,7 @@ static int selinux_file_fcntl(struct file *file, unsigned int cmd,
 	case F_GETFL:
 	case F_GETOWN:
 	case F_GETSIG:
+	case F_GETOWNER_UIDS:
 		/* Just check FD__USE permission */
 		err = file_has_perm(cred, file, 0);
 		break;
@@ -3373,11 +3295,6 @@ static int selinux_dentry_open(struct file *file, const struct cred *cred)
 	struct file_security_struct *fsec;
 	struct inode *inode;
 	struct inode_security_struct *isec;
-	int ret;
-
-	ret = pft_file_open(file, cred);
-	if (ret < 0)
-		return ret;
 
 	inode = file->f_path.dentry->d_inode;
 	fsec = file->f_security;
@@ -3400,16 +3317,6 @@ static int selinux_dentry_open(struct file *file, const struct cred *cred)
 	 * This check is not redundant - do not remove.
 	 */
 	return inode_has_perm_noadp(cred, inode, open_file_to_av(file), 0);
-}
-
-static int selinux_file_close(struct file *file)
-{
-	return pft_file_close(file);
-}
-
-static bool selinux_allow_merge_bio(struct bio *bio1, struct bio *bio2)
-{
-	return pft_allow_merge_bio(bio1, bio2);
 }
 
 /* task security operations */
@@ -5807,7 +5714,6 @@ static struct security_operations selinux_ops = {
 	.inode_free_security =		selinux_inode_free_security,
 	.inode_init_security =		selinux_inode_init_security,
 	.inode_create =			selinux_inode_create,
-	.inode_post_create =		selinux_inode_post_create,
 	.inode_link =			selinux_inode_link,
 	.inode_unlink =			selinux_inode_unlink,
 	.inode_symlink =		selinux_inode_symlink,
@@ -5843,8 +5749,6 @@ static struct security_operations selinux_ops = {
 	.file_receive =			selinux_file_receive,
 
 	.dentry_open =			selinux_dentry_open,
-	.file_close =			selinux_file_close,
-	.allow_merge_bio =		selinux_allow_merge_bio,
 
 	.task_create =			selinux_task_create,
 	.cred_alloc_blank =		selinux_cred_alloc_blank,

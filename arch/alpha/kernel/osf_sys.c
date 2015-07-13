@@ -144,12 +144,12 @@ SYSCALL_DEFINE4(osf_getdirentries, unsigned int, fd,
 		struct osf_dirent __user *, dirent, unsigned int, count,
 		long __user *, basep)
 {
-	int error;
+	int error, fput_needed;
 	struct file *file;
 	struct osf_dirent_callback buf;
 
 	error = -EBADF;
-	file = fget(fd);
+	file = fget_light(fd, &fput_needed);
 	if (!file)
 		goto out;
 
@@ -164,7 +164,7 @@ SYSCALL_DEFINE4(osf_getdirentries, unsigned int, fd,
 	if (count != buf.count)
 		error = count - buf.count;
 
-	fput(file);
+	fput_light(file, fput_needed);
  out:
 	return error;
 }
@@ -981,7 +981,6 @@ struct rusage32 {
 SYSCALL_DEFINE2(osf_getrusage, int, who, struct rusage32 __user *, ru)
 {
 	struct rusage32 r;
-	cputime_t utime, stime;
 
 	if (who != RUSAGE_SELF && who != RUSAGE_CHILDREN)
 		return -EINVAL;
@@ -989,9 +988,8 @@ SYSCALL_DEFINE2(osf_getrusage, int, who, struct rusage32 __user *, ru)
 	memset(&r, 0, sizeof(r));
 	switch (who) {
 	case RUSAGE_SELF:
-		task_cputime(current, &utime, &stime);
-		jiffies_to_timeval32(utime, &r.ru_utime);
-		jiffies_to_timeval32(stime, &r.ru_stime);
+		jiffies_to_timeval32(current->utime, &r.ru_utime);
+		jiffies_to_timeval32(current->stime, &r.ru_stime);
 		r.ru_minflt = current->min_flt;
 		r.ru_majflt = current->maj_flt;
 		break;

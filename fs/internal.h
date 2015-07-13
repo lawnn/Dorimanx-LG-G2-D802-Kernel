@@ -42,6 +42,11 @@ static inline int __sync_blockdev(struct block_device *bdev, int wait)
 extern void __init chrdev_init(void);
 
 /*
+ * namei.c
+ */
+extern int __inode_permission(struct inode *, int);
+
+/*
  * namespace.c
  */
 extern int copy_mount_options(const void __user *, unsigned long *);
@@ -100,11 +105,13 @@ extern struct file *do_file_open_root(struct dentry *, struct vfsmount *,
 
 extern long do_handle_open(int mountdirfd,
 			   struct file_handle __user *ufh, int open_flag);
+extern int open_check_o_direct(struct file *f);
 
 /*
  * inode.c
  */
 extern spinlock_t inode_sb_list_lock;
+extern void inode_add_lru(struct inode *inode);
 
 /*
  * fs-writeback.c

@@ -289,8 +289,12 @@ asmlinkage ssize_t compat_sys_pwritev(unsigned long fd,
 		const struct compat_iovec __user *vec,
 		unsigned long vlen, u32 pos_low, u32 pos_high);
 
-int compat_do_execve(char *filename, compat_uptr_t __user *argv,
-		     compat_uptr_t __user *envp, struct pt_regs *regs);
+int compat_do_execve(const char *filename, const compat_uptr_t __user *argv,
+		     const compat_uptr_t __user *envp, struct pt_regs *regs);
+#ifdef __ARCH_WANT_SYS_EXECVE
+asmlinkage long compat_sys_execve(const char __user *filename, const compat_uptr_t __user *argv,
+		     const compat_uptr_t __user *envp);
+#endif
 
 asmlinkage long compat_sys_select(int n, compat_ulong_t __user *inp,
 		compat_ulong_t __user *outp, compat_ulong_t __user *exp,
@@ -576,8 +580,7 @@ extern ssize_t compat_rw_copy_check_uvector(int type,
 		const struct compat_iovec __user *uvector,
 		unsigned long nr_segs,
 		unsigned long fast_segs, struct iovec *fast_pointer,
-		struct iovec **ret_pointer,
-		int check_access);
+		struct iovec **ret_pointer);
 
 extern void __user *compat_alloc_user_space(unsigned long len);
 

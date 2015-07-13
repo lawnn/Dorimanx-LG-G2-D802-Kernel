@@ -25,6 +25,18 @@
 
 &soc {
 
+	qcom,mdss_dsi_lgit_video {
+	};
+
+	qcom,mdss_dsi_lgit_cmd {
+	};
+
+	qcom,mdss_dsi_jdi_cmd {
+	};
+
+	qcom,mdss_dsi_jdi_video {
+	};
+
 	/* common: core */
 	qcom,wdt@f9017000 {
 		qcom,bark-time = <16000>;
@@ -73,7 +85,7 @@
 		interrupts = <0 105 0>;
 		interrupt-names = "qup_err_intr";
 		qcom,i2c-bus-freq = <400000>;
-		qcom,i2c-src-freq = <50000000>;
+		qcom,i2c-src-freq = <19200000>;
 		qcom,scl-gpio = <&msmgpio 84 0>;
 		qcom,sda-gpio = <&msmgpio 83 0>;
 		qcom,active-only;
@@ -129,6 +141,10 @@
 	/* wifi */
 	qcom,wcnss-wlan@fb000000 {
 		status = "disable";
+	};
+
+	sound {
+		qcom,mbhc-disabled = <0>;
 	};
 
 };

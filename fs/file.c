@@ -6,6 +6,7 @@
  *  Manage the dynamic fd arrays in the process files_struct.
  */
 
+#include <linux/syscalls.h>
 #include <linux/export.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
@@ -237,7 +238,7 @@ static int expand_fdtable(struct files_struct *files, int nr)
  * expanded and execution may have blocked.
  * The files->file_lock should be held on entry, and will be held on exit.
  */
-int expand_files(struct files_struct *files, int nr)
+static int expand_files(struct files_struct *files, int nr)
 {
 	struct fdtable *fdt;
 
@@ -253,6 +254,26 @@ int expand_files(struct files_struct *files, int nr)
 
 	/* All good, so we try */
 	return expand_fdtable(files, nr);
+}
+
+static inline void __set_close_on_exec(int fd, struct fdtable *fdt)
+{
+	__set_bit(fd, fdt->close_on_exec);
+}
+
+static inline void __clear_close_on_exec(int fd, struct fdtable *fdt)
+{
+	__clear_bit(fd, fdt->close_on_exec);
+}
+
+static inline void __set_open_fd(int fd, struct fdtable *fdt)
+{
+	__set_bit(fd, fdt->open_fds);
+}
+
+static inline void __clear_open_fd(int fd, struct fdtable *fdt)
+{
+	__clear_bit(fd, fdt->open_fds);
 }
 
 static int count_open_files(struct fdtable *fdt)
@@ -498,6 +519,12 @@ struct files_struct init_files = {
 	.file_lock	= __SPIN_LOCK_UNLOCKED(init_files.file_lock),
 };
 
+void daemonize_descriptors(void)
+{
+	atomic_inc(&init_files.count);
+	reset_files_struct(&init_files);
+}
+
 /*
  * allocate a file descriptor, mark it busy.
  */
@@ -558,9 +585,8 @@ out:
 	spin_unlock(&files->file_lock);
 	return error;
 }
-EXPORT_SYMBOL(alloc_fd);
 
-int alloc_fd(unsigned start, unsigned flags)
+static int alloc_fd(unsigned start, unsigned flags)
 {
 	return __alloc_fd(current->files, start, rlimit(RLIMIT_NOFILE), flags);
 }
@@ -570,27 +596,6 @@ int get_unused_fd_flags(unsigned flags)
 	return __alloc_fd(current->files, 0, rlimit(RLIMIT_NOFILE), flags);
 }
 EXPORT_SYMBOL(get_unused_fd_flags);
-
-int iterate_fd(struct files_struct *files, unsigned n,
-		int (*f)(const void *, struct file *, unsigned),
-		const void *p)
-{
-	struct fdtable *fdt;
-	struct file *file;
-	int res = 0;
-	if (!files)
-		return 0;
-	spin_lock(&files->file_lock);
-	fdt = files_fdtable(files);
-	while (!res && n < fdt->max_fds) {
-		file = rcu_dereference_check_fdtable(files, fdt->fd[n++]);
-		if (file)
-			res = f(p, file, n);
-	}
-	spin_unlock(&files->file_lock);
-	return res;
-}
-EXPORT_SYMBOL(iterate_fd);
 
 static void __put_unused_fd(struct files_struct *files, unsigned int fd)
 {
@@ -674,6 +679,42 @@ out_unlock:
 	return -EBADF;
 }
 
+void do_close_on_exec(struct files_struct *files)
+{
+	unsigned i;
+	struct fdtable *fdt;
+
+	/* exec unshares first */
+	spin_lock(&files->file_lock);
+	for (i = 0; ; i++) {
+		unsigned long set;
+		unsigned fd = i * BITS_PER_LONG;
+		fdt = files_fdtable(files);
+		if (fd >= fdt->max_fds)
+			break;
+		set = fdt->close_on_exec[i];
+		if (!set)
+			continue;
+		fdt->close_on_exec[i] = 0;
+		for ( ; set ; fd++, set >>= 1) {
+			struct file *file;
+			if (!(set & 1))
+				continue;
+			file = fdt->fd[fd];
+			if (!file)
+				continue;
+			rcu_assign_pointer(fdt->fd[fd], NULL);
+			__put_unused_fd(files, fd);
+			spin_unlock(&files->file_lock);
+			filp_close(file, files);
+			cond_resched();
+			spin_lock(&files->file_lock);
+		}
+
+	}
+	spin_unlock(&files->file_lock);
+}
+
 struct file *fget(unsigned int fd)
 {
 	struct file *file;
@@ -755,6 +796,7 @@ struct file *fget_light(unsigned int fd, int *fput_needed)
 
 	return file;
 }
+EXPORT_SYMBOL(fget_light);
 
 struct file *fget_raw_light(unsigned int fd, int *fput_needed)
 {
@@ -779,3 +821,193 @@ struct file *fget_raw_light(unsigned int fd, int *fput_needed)
 
 	return file;
 }
+
+void set_close_on_exec(unsigned int fd, int flag)
+{
+	struct files_struct *files = current->files;
+	struct fdtable *fdt;
+	spin_lock(&files->file_lock);
+	fdt = files_fdtable(files);
+	if (flag)
+		__set_close_on_exec(fd, fdt);
+	else
+		__clear_close_on_exec(fd, fdt);
+	spin_unlock(&files->file_lock);
+}
+
+bool get_close_on_exec(unsigned int fd)
+{
+	struct files_struct *files = current->files;
+	struct fdtable *fdt;
+	bool res;
+	rcu_read_lock();
+	fdt = files_fdtable(files);
+	res = close_on_exec(fd, fdt);
+	rcu_read_unlock();
+	return res;
+}
+
+static int do_dup2(struct files_struct *files,
+	struct file *file, unsigned fd, unsigned flags)
+{
+	struct file *tofree;
+	struct fdtable *fdt;
+
+	/*
+	 * We need to detect attempts to do dup2() over allocated but still
+	 * not finished descriptor.  NB: OpenBSD avoids that at the price of
+	 * extra work in their equivalent of fget() - they insert struct
+	 * file immediately after grabbing descriptor, mark it larval if
+	 * more work (e.g. actual opening) is needed and make sure that
+	 * fget() treats larval files as absent.  Potentially interesting,
+	 * but while extra work in fget() is trivial, locking implications
+	 * and amount of surgery on open()-related paths in VFS are not.
+	 * FreeBSD fails with -EBADF in the same situation, NetBSD "solution"
+	 * deadlocks in rather amusing ways, AFAICS.  All of that is out of
+	 * scope of POSIX or SUS, since neither considers shared descriptor
+	 * tables and this condition does not arise without those.
+	 */
+	fdt = files_fdtable(files);
+	tofree = fdt->fd[fd];
+	if (!tofree && fd_is_open(fd, fdt))
+		goto Ebusy;
+	get_file(file);
+	rcu_assign_pointer(fdt->fd[fd], file);
+	__set_open_fd(fd, fdt);
+	if (flags & O_CLOEXEC)
+		__set_close_on_exec(fd, fdt);
+	else
+		__clear_close_on_exec(fd, fdt);
+	spin_unlock(&files->file_lock);
+
+	if (tofree)
+		filp_close(tofree, files);
+
+	return fd;
+
+Ebusy:
+	spin_unlock(&files->file_lock);
+	return -EBUSY;
+}
+
+int replace_fd(unsigned fd, struct file *file, unsigned flags)
+{
+	int err;
+	struct files_struct *files = current->files;
+
+	if (!file)
+		return __close_fd(files, fd);
+
+	if (fd >= rlimit(RLIMIT_NOFILE))
+		return -EBADF;
+
+	spin_lock(&files->file_lock);
+	err = expand_files(files, fd);
+	if (unlikely(err < 0))
+		goto out_unlock;
+	return do_dup2(files, file, fd, flags);
+
+out_unlock:
+	spin_unlock(&files->file_lock);
+	return err;
+}
+
+SYSCALL_DEFINE3(dup3, unsigned int, oldfd, unsigned int, newfd, int, flags)
+{
+	int err = -EBADF;
+	struct file *file;
+	struct files_struct *files = current->files;
+
+	if ((flags & ~O_CLOEXEC) != 0)
+		return -EINVAL;
+
+	if (unlikely(oldfd == newfd))
+		return -EINVAL;
+
+	if (newfd >= rlimit(RLIMIT_NOFILE))
+		return -EBADF;
+
+	spin_lock(&files->file_lock);
+	err = expand_files(files, newfd);
+	file = fcheck(oldfd);
+	if (unlikely(!file))
+		goto Ebadf;
+	if (unlikely(err < 0)) {
+		if (err == -EMFILE)
+			goto Ebadf;
+		goto out_unlock;
+	}
+	return do_dup2(files, file, newfd, flags);
+
+Ebadf:
+	err = -EBADF;
+out_unlock:
+	spin_unlock(&files->file_lock);
+	return err;
+}
+
+SYSCALL_DEFINE2(dup2, unsigned int, oldfd, unsigned int, newfd)
+{
+	if (unlikely(newfd == oldfd)) { /* corner case */
+		struct files_struct *files = current->files;
+		int retval = oldfd;
+
+		rcu_read_lock();
+		if (!fcheck_files(files, oldfd))
+			retval = -EBADF;
+		rcu_read_unlock();
+		return retval;
+	}
+	return sys_dup3(oldfd, newfd, 0);
+}
+
+SYSCALL_DEFINE1(dup, unsigned int, fildes)
+{
+	int ret = -EBADF;
+	struct file *file = fget_raw(fildes);
+
+	if (file) {
+		ret = get_unused_fd();
+		if (ret >= 0)
+			fd_install(ret, file);
+		else
+			fput(file);
+	}
+	return ret;
+}
+
+int f_dupfd(unsigned int from, struct file *file, unsigned flags)
+{
+	int err;
+	if (from >= rlimit(RLIMIT_NOFILE))
+		return -EINVAL;
+	err = alloc_fd(from, flags);
+	if (err >= 0) {
+		get_file(file);
+		fd_install(err, file);
+	}
+	return err;
+}
+
+int iterate_fd(struct files_struct *files, unsigned n,
+		int (*f)(const void *, struct file *, unsigned),
+		const void *p)
+{
+	struct fdtable *fdt;
+	int res = 0;
+	if (!files)
+		return 0;
+	spin_lock(&files->file_lock);
+	for (fdt = files_fdtable(files); n < fdt->max_fds; n++) {
+		struct file *file;
+		file = rcu_dereference_check_fdtable(files, fdt->fd[n]);
+		if (!file)
+			continue;
+		res = f(p, file, n);
+		if (res)
+			break;
+	}
+	spin_unlock(&files->file_lock);
+	return res;
+}
+EXPORT_SYMBOL(iterate_fd);
