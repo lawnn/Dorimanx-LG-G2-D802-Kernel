@@ -41,7 +41,7 @@ enum{
  */
 static int isopen = 0; // 0 : No open 1 : Open
 #ifdef FELICA_LED_SUPPORT
-static int isFelicaUsed = 0; /*                                                      */
+static int isFelicaUsed = 0; /* 2012 02 26 LGE_UPDATE_S For DCM Felica LED Blincking */
 #endif
 /*
  *   FUNCTION DEFINITION
@@ -141,7 +141,7 @@ irqreturn_t felica_rfs_detect_interrupt(int irq, void *dev_id)
 	FELICA_DEBUG_MSG("[FELICA_RFS] felica_rfs_detect_interrupt - start irq number : %d\n", irq);
 	#endif
 
-	schedule_delayed_work(&felica_rfs_interrupt,0);
+	schedule_delayed_work(&felica_rfs_interrupt,msecs_to_jiffies(110));
 
 	#ifdef FEATURE_DEBUG_LOW
 	FELICA_DEBUG_MSG("[FELICA_RFS] felica_rfs_detect_interrupt - end \n");
