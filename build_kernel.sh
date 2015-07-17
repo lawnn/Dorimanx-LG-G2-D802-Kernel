@@ -388,7 +388,7 @@ select CHOICE in D800 D801 D802 D803 F320 LS980 VS980 L01F LGL22 ALL; do
 		"LGL22")
 			export KERNEL_CONFIG=dorimanx_lgl22_defconfig
 			KERNEL_CONFIG_FILE=dorimanx_lgl22_defconfig
-			BUILD_L01F=1;
+			BUILD_LGL22=1;
 			BUILD_NOW;
 			break;;
 		"ALL")
